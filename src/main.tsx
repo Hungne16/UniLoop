@@ -1,13 +1,12 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import App from './App'
-import { BackendProvider } from './backend'
-import './styles.css'
-import './redesign.css'
-import './motion-admin.css'
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import App from "./App";
+import { BackendProvider } from "./backend";
 
-createRoot(document.getElementById('root')!).render(
+createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <BackendProvider><App /></BackendProvider>
+    <BackendProvider>
+      <App />
+    </BackendProvider>
   </StrictMode>,
-)
+);

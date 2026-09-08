@@ -14,9 +14,12 @@ import {
   Menu,
   Package,
   Plus,
+  Recycle,
   Search,
   ShieldCheck,
+  Sparkles,
   Star,
+  Users,
   X,
 } from "lucide-react";
 import {
@@ -215,7 +218,11 @@ function Header({
               Đăng nhập
             </button>
           )}
-          <button className="mobile-menu" onClick={() => setOpen((v) => !v)}>
+          <button
+            className="mobile-menu"
+            aria-label={open ? "Đóng menu" : "Mở menu"}
+            onClick={() => setOpen((v) => !v)}
+          >
             <Menu />
           </button>
         </div>
@@ -354,18 +361,40 @@ function HomePage({
         </div>
         <div className="hero-visual">
           <div className="board-caption">
-            <span>UNILOOP / CAMPUS</span>
-            <span>2026</span>
+            <span>UNILOOP / CAMPUS CIRCULAR</span>
+            <span>01 — 26</span>
           </div>
           <div className="hero-poster">
-            <img src="/uniloop-brand.png" alt="Biểu trưng UniLoop" />
-            <p>
-              PASS LẠI
-              <br />
-              DÙNG TIẾP
-              <br />
-              BỚT LÃNG PHÍ
-            </p>
+            <span className="poster-orbit orbit-one" />
+            <span className="poster-orbit orbit-two" />
+            <Recycle className="poster-loop" aria-hidden="true" />
+            <div className="poster-copy">
+              <small>ĐỪNG VỨT ĐI</small>
+              <strong>
+                PASS
+                <br />
+                LẠI.
+              </strong>
+              <p>
+                Một món đồ cũ.
+                <br />
+                Một vòng đời mới.
+              </p>
+            </div>
+            <div className="poster-note">
+              <Sparkles />
+              <span>
+                Gần campus
+                <br />
+                <b>Gặp nhau dễ hơn</b>
+              </span>
+            </div>
+            <div className="poster-community">
+              <Users />
+              <span>
+                <b>{members.length || "Mới"}</b> thành viên
+              </span>
+            </div>
           </div>
         </div>
       </section>
@@ -1010,16 +1039,32 @@ function AuthPage({
     [notice, setNotice] = useState("");
   useGSAP(
     () => {
-      gsap.to(".auth-overlay", {
-        xPercent: mode === "register" ? 100 : 0,
-        duration: 0.72,
-        ease: "power3.inOut",
-      });
-      gsap.fromTo(
-        ".auth-form.active",
-        { autoAlpha: 0, y: 14 },
-        { autoAlpha: 1, y: 0, duration: 0.45, delay: 0.16 },
+      const mm = gsap.matchMedia();
+      mm.add(
+        {
+          fullMotion: "(prefers-reduced-motion: no-preference)",
+          reduceMotion: "(prefers-reduced-motion: reduce)",
+        },
+        (context) => {
+          const duration = context.conditions?.reduceMotion ? 0 : 0.72;
+          gsap.to(".auth-overlay", {
+            xPercent: mode === "register" ? 100 : 0,
+            duration,
+            ease: "power3.inOut",
+          });
+          gsap.fromTo(
+            ".auth-form.active",
+            { autoAlpha: 0, y: context.conditions?.reduceMotion ? 0 : 14 },
+            {
+              autoAlpha: 1,
+              y: 0,
+              duration: context.conditions?.reduceMotion ? 0 : 0.45,
+              delay: context.conditions?.reduceMotion ? 0 : 0.16,
+            },
+          );
+        },
       );
+      return () => mm.revert();
     },
     { scope: root, dependencies: [mode], revertOnUpdate: true },
   );
@@ -1843,15 +1888,34 @@ function AdminPage() {
   );
 }
 
+const pages: Page[] = [
+  "home",
+  "explore",
+  "detail",
+  "create",
+  "saved",
+  "auth",
+  "profile",
+  "offers",
+  "admin",
+];
+const pageFromHash = (): Page => {
+  const candidate = location.hash.slice(1) as Page;
+  return pages.includes(candidate) ? candidate : "home";
+};
+
 export default function App() {
   const backend = useBackend(),
-    [page, setPage] = useState<Page>(
-      location.hash === "#admin" ? "admin" : "home",
-    ),
+    [page, setPage] = useState<Page>(pageFromHash),
     [term, setTerm] = useState(""),
     [selected, setSelected] = useState<Listing | null>(null),
     [editing, setEditing] = useState<Listing | null>(null),
     root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const syncHash = () => setPage(pageFromHash());
+    addEventListener("hashchange", syncHash);
+    return () => removeEventListener("hashchange", syncHash);
+  }, []);
   const go = (p: Page) => {
     const protectedPages: Page[] = ["create", "saved", "profile", "offers"];
     if (protectedPages.includes(p) && !backend.user) p = "auth";
@@ -1865,9 +1929,18 @@ export default function App() {
     go("detail");
   };
   useEffect(() => {
+    if (page === "auth" && backend.ready && backend.user)
+      go(backend.admin ? "admin" : "home");
     if (page === "admin" && backend.ready && !backend.admin)
       go(backend.user ? "profile" : "auth");
-  }, [backend.ready, backend.admin]);
+    if (
+      backend.ready &&
+      !backend.user &&
+      ["create", "saved", "profile", "offers"].includes(page)
+    )
+      go("auth");
+    if (page === "detail" && !selected) go("explore");
+  }, [backend.ready, backend.admin, backend.user, page, selected]);
   useEffect(() => {
     document.title =
       (selected && page === "detail"
