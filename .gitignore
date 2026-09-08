@@ -1,0 +1,12 @@
+node_modules/
+.claude/
+dist/
+.vercel/
+.env*
+!.env.example
+*service-account*.json
+*.tsbuildinfo
+.playwright-cli/
+output/
+
+.vercel

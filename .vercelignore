@@ -1,0 +1,6 @@
+.claude/
+.playwright-cli/
+output/
+scripts/
+*service-account*.json
+.env*
