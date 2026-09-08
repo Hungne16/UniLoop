@@ -44,9 +44,13 @@ service cloud.firestore {
     && (d.type!='free' || d.price==0) && (!(d.type in ['sale','sale_or_exchange']) || d.price>0)
     && d.condition in ['Mới','Như mới','Tốt','Đã qua sử dụng','Cần sửa chữa'] && (d.condition!='Cần sửa chữa' || d.defects.size()>0)
     && text(d.exchangeTarget,500) && d.negotiable is bool && d.images is list && d.images.size()>0 && d.images.size()<=5
+    && image(d.images[0])
+    && (d.images.size()<2 || image(d.images[1])) && (d.images.size()<3 || image(d.images[2]))
+    && (d.images.size()<4 || image(d.images[3])) && (d.images.size()<5 || image(d.images[4]))
     && d.imagePaths is list && d.imagePaths.size()==d.images.size() && d.slot in ['0','1','2','3','4']
     && d.expiresAt is number && d.expiresAt <= request.time.toMillis()+2592060000;
   }
+  function image(v){return v is string && v.size()<=180000;}
   match /listings/{id}{
    allow read:if resource.data.status in ['active','reserved','sold'] || admin() || (signed() && resource.data.ownerId == request.auth.uid);
    allow create:if own(request.resource.data.ownerId) && validListing(request.resource.data) && request.resource.data.status in ['active','draft']

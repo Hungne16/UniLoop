@@ -942,7 +942,7 @@ function ListingEditor({
             />
           </label>
           <label className="full">
-            Ảnh tải lên (1–5 ảnh, mỗi ảnh dưới 5MB)
+            Ảnh sản phẩm (1–5 ảnh, mỗi ảnh dưới 5MB)
             <input
               type="file"
               accept="image/jpeg,image/png,image/webp"
@@ -952,7 +952,7 @@ function ListingEditor({
             <small>
               {editing
                 ? "Để trống nếu muốn giữ ảnh hiện tại."
-                : "Ảnh đầu tiên sẽ là ảnh bìa."}
+                : "Ảnh được tự động nén WebP trước khi lưu. Ảnh đầu tiên là ảnh bìa."}
             </small>
           </label>
           <label className="full">

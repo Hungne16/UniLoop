@@ -6,12 +6,7 @@ import {
   updateDoc,
   addDoc,
 } from "firebase/firestore";
-import {
-  deleteObject,
-  getDownloadURL,
-  ref,
-  uploadBytes,
-} from "firebase/storage";
+import { deleteObject, ref } from "firebase/storage";
 import { auth, db, storage } from "./firebase";
 import {
   available,
@@ -43,10 +38,40 @@ export type ListingInput = Pick<
   | "defects"
   | "negotiable"
 >;
-export async function uploadImages(files: File[], folder = "listings") {
-  const uid = requireUser(),
-    paths: string[] = [],
-    urls: string[] = [];
+async function compressImage(file: File) {
+  const bitmap = await createImageBitmap(file);
+  let width = bitmap.width,
+    height = bitmap.height,
+    quality = 0.78;
+  const initialScale = Math.min(1, 1000 / Math.max(width, height));
+  width = Math.max(1, Math.round(width * initialScale));
+  height = Math.max(1, Math.round(height * initialScale));
+  let blob: Blob | null = null;
+  for (let attempt = 0; attempt < 7; attempt++) {
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext("2d")!.drawImage(bitmap, 0, 0, width, height);
+    blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/webp", quality),
+    );
+    if (blob && blob.size <= 125 * 1024) break;
+    width = Math.max(420, Math.round(width * 0.82));
+    height = Math.max(420, Math.round(height * 0.82));
+    quality = Math.max(0.42, quality - 0.08);
+  }
+  bitmap.close();
+  if (!blob || blob.size > 135 * 1024)
+    throw new Error("Không thể tối ưu ảnh này. Hãy chọn ảnh đơn giản hơn.");
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("Không thể đọc ảnh."));
+    reader.readAsDataURL(blob);
+  });
+}
+export async function uploadImages(files: File[]) {
+  requireUser();
   if (
     files.length > 5 ||
     files.some(
@@ -56,19 +81,9 @@ export async function uploadImages(files: File[], folder = "listings") {
     )
   )
     throw new Error("Tối đa 5 ảnh JPG, PNG hoặc WebP, mỗi ảnh dưới 5 MB.");
-  try {
-    for (const file of files) {
-      const path = folder + "/" + uid + "/" + crypto.randomUUID(),
-        target = ref(storage, path);
-      await uploadBytes(target, file);
-      paths.push(path);
-      urls.push(await getDownloadURL(target));
-    }
-    return { paths, urls };
-  } catch (e) {
-    await cleanupImages(paths);
-    throw e;
-  }
+  const urls = [];
+  for (const file of files) urls.push(await compressImage(file));
+  return { paths: files.map(() => ""), urls };
 }
 export async function cleanupImages(paths: string[]) {
   await Promise.allSettled(
@@ -164,7 +179,6 @@ export async function saveListing(
     if (existing && files.length) await cleanupImages(existing.imagePaths);
     return target.id;
   } catch (e) {
-    await cleanupImages(uploaded.paths);
     throw e;
   }
 }

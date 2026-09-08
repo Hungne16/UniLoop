@@ -12,13 +12,15 @@
 
 The application implements listings and drafts, favorites, search and filters, offers with a 24-hour expiry, counter-offers, atomic reservation, two-party completion, reviews, reports, student verification requests, moderation, and the five-open-listing quota.
 
-## Remaining Firebase console action
+## Image storage
 
-The current Google account can deploy rules but cannot create the project's default Storage bucket. Open Firebase Console > Storage > Get started with an owner/billing-enabled account, create the default bucket, then run:
+The marketplace works without a paid Storage bucket. Product photos are resized and compressed to WebP in the browser, capped to a safe Firestore document size, and stored with the listing. HTTPS image URLs remain available as an alternative.
+
+Firebase Storage can still be enabled later for full-resolution originals. The current Google account can deploy rules but cannot create the project's default bucket. An owner/billing-enabled account can create it in Firebase Console and then run:
 
     npx firebase-tools deploy --only storage --project uniloop-a2a9b
 
-Until that is done, listing creation accepts HTTPS image URLs as a production-safe fallback. File upload starts working automatically after the bucket and Storage rules are deployed.
+Moving existing embedded images to Storage would require a deliberate migration; it is not required for the current release.
 
 ## Local verification
 

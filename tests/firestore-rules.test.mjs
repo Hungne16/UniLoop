@@ -42,6 +42,13 @@ test('outsider cannot forge admin or mutate another listing',async()=>{
  await assertFails(updateDoc(doc(db('outsider'),'listings/l1'),{status:'blocked',updatedAt:now()}))
  await assertFails(setDoc(doc(db('outsider'),'admins/outsider'),{}))
 })
+test('owner can edit a valid listing with an embedded WebP image',async()=>{
+ await seed()
+ const owner=db('seller')
+ const current=listing('seller','0',{images:['data:image/webp;base64,UklGRg=='],imagePaths:[''],updatedAt:now()})
+ await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'listings/l1'),current))
+ await assertSucceeds(updateDoc(doc(owner,'listings/l1'),{title:'Giáo trình đã cập nhật',updatedAt:now()}))
+})
 test('seller can atomically accept, outsider cannot confirm',async()=>{
  await seed()
  await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'offers/o1'),offer()))
