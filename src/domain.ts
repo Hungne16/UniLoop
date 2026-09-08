@@ -25,6 +25,9 @@ export interface Review {
   id:string; offerId:string; reviewerId:string; revieweeId:string; rating:number; text:string
   reply:string; createdAt:number; updatedAt:number
 }
+export interface ChatMessage {
+  id:string; senderId:string; text:string; createdAt:number
+}
 export interface Report {
   id:string; reporterId:string; targetType:'listing'|'member'|'review'|'transaction'
   targetId:string; reason:string; description:string; status:'new'|'under_review'|'resolved'|'rejected'

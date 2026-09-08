@@ -244,6 +244,16 @@ export async function sendOffer(
   });
   return result.id;
 }
+export async function sendChatMessage(offerId: string, text: string) {
+  const uid = requireUser(),
+    clean = text.trim().slice(0, 2000);
+  if (!clean) throw new Error("Nhập nội dung tin nhắn.");
+  await addDoc(collection(db, "offers", offerId, "messages"), {
+    senderId: uid,
+    text: clean,
+    createdAt: Date.now(),
+  });
+}
 export async function acceptOffer(offerId: string) {
   const uid = requireUser();
   await runTransaction(db, async (tx) => {

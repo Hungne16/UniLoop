@@ -251,6 +251,29 @@ test("review is allowed after completion and preserves immutable fields when edi
   );
   await assertFails(setDoc(doc(db("buyer"), "reviews/another-id"), review));
 });
+test("only offer participants can read and send chat messages", async () => {
+  await seed();
+  await env.withSecurityRulesDisabled((c) =>
+    setDoc(doc(c.firestore(), "offers/o1"), offer()),
+  );
+  const message = {
+    senderId: "buyer",
+    text: "Mình gặp ở thư viện nhé?",
+    createdAt: now(),
+  };
+  await assertSucceeds(
+    setDoc(doc(db("buyer"), "offers/o1/messages/m1"), message),
+  );
+  await assertSucceeds(
+    getDocs(collection(db("seller"), "offers/o1/messages")),
+  );
+  await assertFails(
+    getDocs(collection(db("outsider"), "offers/o1/messages")),
+  );
+  await assertFails(
+    setDoc(doc(db("seller"), "offers/o1/messages/m2"), message),
+  );
+});
 test("admin document grants moderation but remains unwritable by client", async () => {
   await seed();
   await env.withSecurityRulesDisabled((c) =>

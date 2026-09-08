@@ -1327,15 +1327,20 @@ h2 {
 .manage-list article {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 14px;
   padding: 18px;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: white;
 }
-.offer-row > div:first-child,
+.offer-row > .offer-main,
 .manage-list article > div {
   margin-right: auto;
+}
+.offer-main {
+  min-width: min(100%, 360px);
+  flex: 1 1 420px;
 }
 .offer-row h3 {
   margin: 8px 0 2px;
@@ -1366,6 +1371,16 @@ h2 {
   font-size: 11px;
   font-weight: 700;
 }
+.offer-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.offer-actions .chat-toggle {
+  color: var(--navy);
+  background: #e7f6f2;
+}
 .offer-actions .secondary,
 .manage-list button {
   color: var(--navy);
@@ -1384,6 +1399,204 @@ h2 {
   min-height: 38px;
   border: 1px solid var(--line);
   border-radius: 8px;
+}
+.counterparty-card {
+  width: fit-content;
+  min-width: 290px;
+  max-width: 100%;
+  margin-top: 15px;
+  padding: 11px 13px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  border: 1px solid #dbe8e4;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f3fbf8, #fffdf6);
+}
+.counterparty-card .member-avatar {
+  width: 44px;
+  height: 44px;
+}
+.counterparty-card > div {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+.counterparty-card small {
+  color: var(--teal);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.counterparty-card strong {
+  color: var(--navy);
+  font-size: 14px;
+}
+.counterparty-card span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.offer-row .offer-note,
+.offer-row .exchange-note {
+  margin-top: 10px;
+  padding: 9px 11px;
+  border-radius: 9px;
+  color: #486365;
+  background: #f5f8f7;
+}
+.offer-row .exchange-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--navy);
+  background: #edf9f6;
+}
+.offer-chat {
+  flex: 1 0 100%;
+  overflow: hidden;
+  border: 1px solid #d7e6e2;
+  border-radius: 15px;
+  background: #f5f9f7;
+}
+.offer-chat > header {
+  min-height: 66px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: white;
+  background: var(--navy);
+}
+.offer-chat > header .member-avatar {
+  width: 42px;
+  height: 42px;
+  color: var(--navy);
+  background: #bceadf;
+}
+.offer-chat > header > div {
+  min-width: 0;
+  display: grid;
+  margin-right: auto;
+}
+.offer-chat > header strong {
+  font-size: 14px;
+}
+.offer-chat > header span {
+  overflow: hidden;
+  color: #a9c8c9;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.offer-chat > header button {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  color: white;
+  background: rgba(255, 255, 255, 0.1);
+}
+.chat-messages {
+  height: min(42vh, 360px);
+  min-height: 220px;
+  overflow-y: auto;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background:
+    radial-gradient(circle at 0 0, rgba(25, 167, 148, 0.08), transparent 35%),
+    #f7faf8;
+}
+.chat-message {
+  max-width: min(78%, 520px);
+  align-self: flex-start;
+}
+.chat-message.mine {
+  align-self: flex-end;
+  text-align: right;
+}
+.chat-message p {
+  margin: 0;
+  padding: 10px 13px;
+  border: 1px solid #dce8e4;
+  border-radius: 4px 14px 14px;
+  color: var(--navy);
+  background: white;
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.chat-message.mine p {
+  border-color: var(--navy);
+  border-radius: 14px 4px 14px 14px;
+  color: white;
+  background: var(--navy);
+}
+.chat-message time {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 9px;
+}
+.chat-empty {
+  margin: auto;
+  max-width: 330px;
+  text-align: center;
+  color: var(--muted);
+}
+.chat-empty svg {
+  width: 35px;
+  height: 35px;
+  color: var(--teal);
+}
+.chat-empty p {
+  font-size: 12px;
+}
+.chat-error {
+  margin: 0;
+  padding: 8px 14px;
+  color: #8c2929;
+  background: #fff0ed;
+  font-size: 11px;
+}
+.chat-compose {
+  padding: 11px;
+  display: flex;
+  gap: 8px;
+  border-top: 1px solid #dce8e4;
+  background: white;
+}
+.chat-compose input {
+  min-width: 0;
+  min-height: 44px;
+  flex: 1;
+  padding: 0 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fbfcfb;
+}
+.chat-compose button {
+  min-width: 86px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 10px;
+  color: white;
+  background: var(--teal);
+  font-weight: 800;
+}
+.chat-compose button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .member-avatar {
@@ -1840,6 +2053,18 @@ footer {
   .inline-review {
     width: 100%;
     flex-direction: column;
+  }
+  .counterparty-card {
+    width: 100%;
+    min-width: 0;
+  }
+  .chat-messages {
+    height: 330px;
+    min-height: 0;
+    padding: 13px;
+  }
+  .chat-message {
+    max-width: 88%;
   }
   .profile-hero {
     align-items: flex-start;

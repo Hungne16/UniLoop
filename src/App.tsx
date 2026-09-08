@@ -12,10 +12,12 @@ import {
   LogOut,
   MapPin,
   Menu,
+  MessageCircle,
   Package,
   Plus,
   Recycle,
   Search,
+  Send,
   ShieldCheck,
   Sparkles,
   Star,
@@ -38,7 +40,9 @@ import {
   addDoc,
   collection,
   doc,
+  limitToLast,
   onSnapshot,
+  orderBy,
   query,
   setDoc,
   updateDoc,
@@ -57,6 +61,7 @@ import {
   saveMember,
   saveReview,
   scheduleMeeting,
+  sendChatMessage,
   sendOffer,
   type ListingInput,
 } from "./services";
@@ -72,6 +77,7 @@ import {
   safeURL,
   statusLabel,
   type Listing,
+  type ChatMessage,
   type Member,
   type Offer,
   type Report,
@@ -1250,10 +1256,12 @@ function AuthPage({
 }
 
 function OffersPage() {
-  const { offers, user, reviews } = useBackend(),
+  const { offers, user, reviews, members, products, ownListings } =
+      useBackend(),
     [busy, setBusy] = useState(""),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
+    [openChat, setOpenChat] = useState(""),
     [review, setReview] = useState<
       Record<string, { rating: number; text: string }>
     >({});
@@ -1287,6 +1295,11 @@ function OffersPage() {
         {offers.length ? (
           offers.map((o) => {
             const incoming = o.sellerId === user.uid,
+              counterpartId = incoming ? o.buyerId : o.sellerId,
+              counterpart = members.find((item) => item.id === counterpartId),
+              exchangeListing = [...products, ...ownListings].find(
+                (item) => item.id === o.exchangeListingId,
+              ),
               existingReview = reviews.find(
                 (item) => item.offerId === o.id && item.reviewerId === user.uid,
               ),
@@ -1298,7 +1311,7 @@ function OffersPage() {
                 !(incoming ? o.sellerConfirmed : o.buyerConfirmed);
             return (
               <article className="offer-row" key={o.id}>
-                <div>
+                <div className="offer-main">
                   <span className="status-pill">
                     {statusLabel[o.status] || o.status}
                   </span>
@@ -1313,8 +1326,41 @@ function OffersPage() {
                       ? "Đã hết hạn"
                       : "Cập nhật " + date(o.updatedAt)}
                   </small>
+                  <div className="counterparty-card">
+                    <Avatar member={counterpart} />
+                    <div>
+                      <small>
+                        {incoming ? "Người gửi đề nghị" : "Chủ món đồ"}
+                      </small>
+                      <strong>{counterpart?.name || "Thành viên UniLoop"}</strong>
+                      <span>
+                        {[counterpart?.university, counterpart?.major, counterpart?.cohort]
+                          .filter(Boolean)
+                          .join(" · ") || "Chưa cập nhật thông tin học tập"}
+                      </span>
+                    </div>
+                  </div>
+                  {o.message && (
+                    <p className="offer-note">
+                      <b>Lời nhắn:</b> {o.message}
+                    </p>
+                  )}
+                  {o.exchangeListingId && (
+                    <p className="exchange-note">
+                      <Recycle size={15} /> Đổi bằng: {exchangeListing?.title || "Món đồ trao đổi"}
+                    </p>
+                  )}
                 </div>
                 <div className="offer-actions">
+                  <button
+                    className="chat-toggle"
+                    onClick={() =>
+                      setOpenChat((current) => (current === o.id ? "" : o.id))
+                    }
+                  >
+                    <MessageCircle size={16} />
+                    {openChat === o.id ? "Đóng chat" : "Trao đổi"}
+                  </button>
                   {incoming && o.status === "pending" && (
                     <>
                       <button
@@ -1448,6 +1494,14 @@ function OffersPage() {
                   )}
                 </div>
                 {busy === o.id && <span>Đang xử lý…</span>}
+                {openChat === o.id && (
+                  <OfferChat
+                    offer={o}
+                    userId={user.uid}
+                    counterpart={counterpart}
+                    onClose={() => setOpenChat("")}
+                  />
+                )}
               </article>
             );
           })
@@ -1459,6 +1513,115 @@ function OffersPage() {
         )}
       </div>
     </main>
+  );
+}
+
+function OfferChat({
+  offer,
+  userId,
+  counterpart,
+  onClose,
+}: {
+  offer: Offer;
+  userId: string;
+  counterpart?: Member;
+  onClose: () => void;
+}) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]),
+    [text, setText] = useState(""),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(""),
+    endRef = useRef<HTMLDivElement>(null);
+
+  useEffect(
+    () =>
+      onSnapshot(
+        query(
+          collection(db, "offers", offer.id, "messages"),
+          orderBy("createdAt", "asc"),
+          limitToLast(200),
+        ),
+        (snapshot) =>
+          setMessages(
+            snapshot.docs.map(
+              (item) => ({ ...item.data(), id: item.id }) as ChatMessage,
+            ),
+          ),
+        (reason) => setError(errorMessage(reason)),
+      ),
+    [offer.id],
+  );
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!text.trim() || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await sendChatMessage(offer.id, text);
+      setText("");
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="offer-chat" aria-label={`Trao đổi về ${offer.title}`}>
+      <header>
+        <Avatar member={counterpart} />
+        <div>
+          <strong>{counterpart?.name || "Thành viên UniLoop"}</strong>
+          <span>Trao đổi riêng về {offer.title}</span>
+        </div>
+        <button onClick={onClose} aria-label="Đóng trò chuyện">
+          <X size={18} />
+        </button>
+      </header>
+      <div className="chat-messages" aria-live="polite">
+        {messages.length ? (
+          messages.map((message) => (
+            <div
+              key={message.id}
+              className={`chat-message ${message.senderId === userId ? "mine" : "theirs"}`}
+            >
+              <p>{message.text}</p>
+              <time>{
+                new Date(message.createdAt).toLocaleTimeString("vi-VN", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              }</time>
+            </div>
+          ))
+        ) : (
+          <div className="chat-empty">
+            <MessageCircle />
+            <p>Chưa có tin nhắn. Hãy bắt đầu trao đổi địa điểm và thời gian gặp.</p>
+          </div>
+        )}
+        <div ref={endRef} />
+      </div>
+      {error && <p className="chat-error">{error}</p>}
+      <form className="chat-compose" onSubmit={submit}>
+        <input
+          value={text}
+          maxLength={2000}
+          onChange={(event) => setText(event.target.value)}
+          placeholder={`Nhắn cho ${counterpart?.name || "người này"}…`}
+          aria-label="Tin nhắn"
+        />
+        <button disabled={busy || !text.trim()} aria-label="Gửi tin nhắn">
+          <Send size={17} />
+          <span>{busy ? "Đang gửi" : "Gửi"}</span>
+        </button>
+      </form>
+    </section>
   );
 }
 

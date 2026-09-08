@@ -109,6 +109,14 @@ service cloud.firestore {
      && request.resource.data.status==(request.resource.data.buyerConfirmed && request.resource.data.sellerConfirmed?'completed':'accepted')
      && (request.resource.data.status!='completed' || pair(resource.data,'sold',id)))
    );
+   match /messages/{messageId}{
+    allow read:if party(get(op(id)).data);
+    allow create:if party(get(op(id)).data)
+     && request.resource.data.keys().hasOnly(['senderId','text','createdAt'])
+     && request.resource.data.senderId==request.auth.uid
+     && text(request.resource.data.text,2000) && request.resource.data.text.size()>0
+     && recent(request.resource.data.createdAt);
+   }
   }
   match /reviews/{id}{
    allow read:if true;
