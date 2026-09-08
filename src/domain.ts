@@ -28,6 +28,10 @@ export interface Review {
 export interface ChatMessage {
   id:string; senderId:string; text:string; createdAt:number
 }
+export interface Notification {
+  id:string; targetType:'all'|'user'; targetId:string; title:string; message:string
+  createdBy:string; createdAt:number
+}
 export interface Report {
   id:string; reporterId:string; targetType:'listing'|'member'|'review'|'transaction'
   targetId:string; reason:string; description:string; status:'new'|'under_review'|'resolved'|'rejected'

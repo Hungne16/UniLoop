@@ -335,3 +335,81 @@ test("admin document grants moderation but remains unwritable by client", async 
   );
   await assertFails(setDoc(doc(db("admin"), "admins/other"), {}));
 });
+test("admin can remove marketplace data and permanently restrict a member", async () => {
+  await seed();
+  await env.withSecurityRulesDisabled((c) =>
+    setDoc(doc(c.firestore(), "admins/admin"), { email: "admin123@edu.vn" }),
+  );
+  const admin = db("admin"),
+    batch = writeBatch(admin);
+  batch.set(doc(admin, "moderation/seller"), {
+    status: "deleted",
+    reason: "Tài khoản đã bị xóa khỏi UniLoop",
+    updatedAt: now(),
+  });
+  batch.delete(doc(admin, "members/seller"));
+  batch.delete(doc(admin, "members/seller/slots/0"));
+  batch.update(doc(admin, "listings/l1"), {
+    status: "blocked",
+    updatedAt: now(),
+  });
+  await assertSucceeds(batch.commit());
+  await assertFails(
+    setDoc(doc(db("seller"), "members/seller"), {
+      ...member,
+      updatedAt: now(),
+    }),
+  );
+});
+test("only admin can send global or private notifications", async () => {
+  await seed();
+  await env.withSecurityRulesDisabled((c) =>
+    setDoc(doc(c.firestore(), "admins/admin"), { email: "admin123@edu.vn" }),
+  );
+  const admin = db("admin"),
+    base = {
+      title: "Cập nhật UniLoop",
+      message: "Vui lòng kiểm tra giao dịch của bạn.",
+      createdBy: "admin",
+      createdAt: now(),
+    };
+  await assertSucceeds(
+    setDoc(doc(admin, "notifications/global"), {
+      ...base,
+      targetType: "all",
+      targetId: "",
+    }),
+  );
+  await assertSucceeds(
+    setDoc(doc(admin, "notifications/private"), {
+      ...base,
+      targetType: "user",
+      targetId: "buyer",
+    }),
+  );
+  await assertSucceeds(
+    getDocs(
+      query(
+        collection(db("seller"), "notifications"),
+        where("targetType", "==", "all"),
+      ),
+    ),
+  );
+  await assertSucceeds(
+    getDocs(
+      query(
+        collection(db("buyer"), "notifications"),
+        where("targetId", "==", "buyer"),
+      ),
+    ),
+  );
+  await assertFails(getDoc(doc(db("seller"), "notifications/private")));
+  await assertFails(
+    setDoc(doc(db("buyer"), "notifications/forged"), {
+      ...base,
+      createdBy: "buyer",
+      targetType: "all",
+      targetId: "",
+    }),
+  );
+});

@@ -19,13 +19,14 @@ service cloud.firestore {
   match /admins/{uid}{allow get:if signed() && request.auth.uid == uid;}
   match /moderation/{uid}{
    allow read:if admin() || (signed() && request.auth.uid == uid);
-   allow create,update:if admin() && uid != request.auth.uid && request.resource.data.keys().hasOnly(['status','reason','updatedAt']) && request.resource.data.status in ['active','restricted'] && text(request.resource.data.reason,1000);
+   allow create,update:if admin() && uid != request.auth.uid && request.resource.data.keys().hasOnly(['status','reason','updatedAt']) && request.resource.data.status in ['active','restricted','deleted'] && text(request.resource.data.reason,1000);
   }
   match /paymentProfiles/{uid}{
    allow read:if own(uid);
    allow create,update:if own(uid)
     && request.resource.data.keys().hasOnly(['qr','updatedAt'])
     && image(request.resource.data.qr) && request.resource.data.qr.size()>0;
+   allow delete:if admin();
   }
   match /members/{uid}{
    allow read:if true;
@@ -33,13 +34,14 @@ service cloud.firestore {
     && text(request.resource.data.name,100) && request.resource.data.name.size()>0
     && text(request.resource.data.university,100) && text(request.resource.data.major,100) && text(request.resource.data.cohort,30)
     && text(request.resource.data.bio,1000) && image(request.resource.data.photoURL) && text(request.resource.data.socialURL,2000);
+   allow delete:if admin();
    match /favorites/{id}{allow read,delete:if own(uid);allow create,update:if own(uid) && request.resource.data.keys().hasOnly(['createdAt']);}
    match /slots/{slot}{
-    allow read:if own(uid);
+    allow read:if own(uid) || admin();
     allow create:if own(uid) && slot in ['0','1','2','3','4'] && request.resource.data.keys().hasOnly(['listingId'])
      && getAfter(lp(request.resource.data.listingId)).data.ownerId == uid && getAfter(lp(request.resource.data.listingId)).data.slot == slot;
     allow update:if own(uid) && request.resource.data == resource.data;
-    allow delete:if signed() && (!existsAfter(lp(resource.data.listingId)) || getAfter(lp(resource.data.listingId)).data.status == 'sold');
+    allow delete:if admin() || (signed() && (!existsAfter(lp(resource.data.listingId)) || getAfter(lp(resource.data.listingId)).data.status == 'sold'));
    }
   }
   function validListing(d){
@@ -81,7 +83,7 @@ service cloud.firestore {
      || (changed(['status','chosenOfferId']) && request.resource.data.status=='active' && request.resource.data.chosenOfferId==''
       && getAfter(op(resource.data.chosenOfferId)).data.status=='cancelled'))
    );
-   allow delete:if own(resource.data.ownerId) && resource.data.status in ['active','draft','hidden'] && !existsAfter(sp(resource.data.ownerId,resource.data.slot));
+   allow delete:if admin() || (own(resource.data.ownerId) && resource.data.status in ['active','draft','hidden'] && !existsAfter(sp(resource.data.ownerId,resource.data.slot)));
   }
   match /offers/{id}{
    allow read:if admin() || (active() && (resource.data.buyerId == request.auth.uid || resource.data.sellerId == request.auth.uid));
@@ -159,6 +161,18 @@ service cloud.firestore {
    allow update:if admin() && changed(['status','response','updatedAt']) && request.resource.data.status in ['verified','rejected'] && text(request.resource.data.response,2000);
   }
   match /studentBadges/{uid}{allow read:if true;allow write:if admin();}
+  match /notifications/{id}{
+   allow read:if admin() || (signed() && (resource.data.targetType=='all' || resource.data.targetId==request.auth.uid));
+   allow create:if admin()
+    && request.resource.data.keys().hasOnly(['targetType','targetId','title','message','createdBy','createdAt'])
+    && request.resource.data.targetType in ['all','user']
+    && ((request.resource.data.targetType=='all' && request.resource.data.targetId=='')
+     || (request.resource.data.targetType=='user' && request.resource.data.targetId!=''))
+    && text(request.resource.data.title,120) && request.resource.data.title.size()>0
+    && text(request.resource.data.message,2000) && request.resource.data.message.size()>0
+    && request.resource.data.createdBy==request.auth.uid && recent(request.resource.data.createdAt);
+   allow delete:if admin();
+  }
   match /universities/{id}{allow read:if true;allow write:if admin() && text(request.resource.data.name,150);}
   match /categories/{id}{allow read:if true;allow write:if admin() && text(request.resource.data.name,150);}
   match /wanted/{id}{

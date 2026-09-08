@@ -49,6 +49,7 @@ import {
   query,
   setDoc,
   updateDoc,
+  writeBatch,
 } from "firebase/firestore";
 import { auth, db, errorMessage } from "./firebase";
 import { useBackend } from "./backend";
@@ -214,9 +215,10 @@ function Header({
   term: string;
   setTerm: (s: string) => void;
 }) {
-  const { user, admin, offers, members } = useBackend(),
+  const { user, admin, offers, members, notifications } = useBackend(),
     me = members.find((member) => member.id === user?.uid),
-    [open, setOpen] = useState(false);
+    [open, setOpen] = useState(false),
+    [noticeOpen, setNoticeOpen] = useState(false);
   const alert = offers.some((o) =>
     ["pending", "countered", "accepted"].includes(o.status),
   );
@@ -251,11 +253,12 @@ function Header({
         <div className="header-actions">
           <button
             className="icon-btn notification"
-            aria-label="Giao dịch"
-            onClick={() => go("offers")}
+            aria-label="Thông báo"
+            aria-expanded={noticeOpen}
+            onClick={() => setNoticeOpen((value) => !value)}
           >
             <Bell />
-            {alert && <i />}
+            {(alert || notifications.length > 0) && <i />}
           </button>
           <button
             className="icon-btn"
@@ -290,6 +293,44 @@ function Header({
           </button>
         </div>
       </div>
+      {noticeOpen && (
+        <aside className="notification-panel">
+          <div>
+            <strong>Thông báo</strong>
+            <button onClick={() => setNoticeOpen(false)} aria-label="Đóng">
+              <X size={17} />
+            </button>
+          </div>
+          {alert && (
+            <button
+              className="transaction-alert"
+              onClick={() => {
+                setNoticeOpen(false);
+                go("offers");
+              }}
+            >
+              <Recycle size={18} />
+              <span>
+                <b>Giao dịch cần chú ý</b>
+                <small>Mở để xem đề nghị hoặc lịch hẹn mới.</small>
+              </span>
+            </button>
+          )}
+          {notifications.slice(0, 8).map((item) => (
+            <article key={item.id}>
+              <Bell size={16} />
+              <div>
+                <b>{item.title}</b>
+                <p>{item.message}</p>
+                <time>{date(item.createdAt)}</time>
+              </div>
+            </article>
+          ))}
+          {!alert && !notifications.length && (
+            <p className="notification-empty">Bạn chưa có thông báo mới.</p>
+          )}
+        </aside>
+      )}
       {open && (
         <nav className="mobile-menu-panel">
           <button onClick={() => go("explore")}>Khám phá</button>
@@ -655,6 +696,7 @@ function Detail({
 }) {
   const { members, badges, user, saved, toggleSaved, ownListings } = useBackend(),
     seller = members.find((x) => x.id === item.ownerId),
+    [activeImage, setActiveImage] = useState(0),
     [modal, setModal] = useState(false),
     [price, setPrice] = useState(item.price),
     [message, setMessage] = useState(""),
@@ -662,6 +704,7 @@ function Detail({
     [busy, setBusy] = useState(false),
     [notice, setNotice] = useState(""),
     [error, setError] = useState("");
+  useEffect(() => setActiveImage(0), [item.id]);
   const submit = async () => {
     if (!user) {
       go("auth");
@@ -687,12 +730,27 @@ function Detail({
       <div className="detail-grid">
         <div className="gallery">
           <div className="main-image">
-            <img src={item.images[0]} alt={item.title} />
+            <img
+              key={item.images[activeImage]}
+              src={item.images[activeImage]}
+              alt={`${item.title} – ảnh ${activeImage + 1}`}
+            />
+            {item.images.length > 1 && (
+              <span className="image-counter">
+                {activeImage + 1}/{item.images.length}
+              </span>
+            )}
           </div>
           <div className="thumbs">
             {item.images.map((src, i) => (
-              <button className={i === 0 ? "active" : ""} key={src}>
-                <img src={src} alt="" />
+              <button
+                className={i === activeImage ? "active" : ""}
+                key={`${src}-${i}`}
+                onClick={() => setActiveImage(i)}
+                aria-label={`Xem ảnh ${i + 1}`}
+                aria-pressed={i === activeImage}
+              >
+                <img src={src} alt={`${item.title} – ảnh nhỏ ${i + 1}`} />
               </button>
             ))}
           </div>
@@ -995,7 +1053,7 @@ function ListingEditor({
           dịch.
         </p>
         <div className="form-grid">
-          <label className="full">
+          <label className="full field-title">
             Tiêu đề
             <input
               required
@@ -1004,7 +1062,7 @@ function ListingEditor({
               onChange={(e) => set("title", e.target.value)}
             />
           </label>
-          <label>
+          <label className="field-type">
             Hình thức
             <select
               value={form.type}
@@ -1018,7 +1076,7 @@ function ListingEditor({
               <option value="sale_or_exchange">Bán hoặc đổi</option>
             </select>
           </label>
-          <label>
+          <label className="field-price">
             Giá (đ)
             <input
               required
@@ -1034,7 +1092,7 @@ function ListingEditor({
             </small>
           </label>
           {form.type.includes("sale") && (
-            <label className="full payment-qr-editor">
+            <label className="full payment-qr-editor field-qr">
               QR thanh toán của người bán (không hiển thị công khai)
               <div>
                 {paymentQR ? (
@@ -1071,7 +1129,19 @@ function ListingEditor({
               </div>
             </label>
           )}
-          <label>
+          {form.type.includes("exchange") && (
+            <label className="full field-exchange">
+              Món bạn muốn đổi
+              <input
+                maxLength={500}
+                value={form.exchangeTarget}
+                onChange={(event) => set("exchangeTarget", event.target.value)}
+                placeholder="Ví dụ: Giáo trình, tai nghe, đồ dùng phòng trọ..."
+              />
+              <small>Giúp người xem biết bạn đang ưu tiên đổi lấy món gì.</small>
+            </label>
+          )}
+          <label className="field-category">
             Danh mục
             <select
               value={form.category}
@@ -1082,7 +1152,7 @@ function ListingEditor({
               ))}
             </select>
           </label>
-          <label>
+          <label className="field-condition">
             Tình trạng
             <select
               value={form.condition}
@@ -1093,7 +1163,7 @@ function ListingEditor({
               ))}
             </select>
           </label>
-          <label>
+          <label className="field-school">
             Trường
             <select
               value={form.school}
@@ -1104,7 +1174,7 @@ function ListingEditor({
               ))}
             </select>
           </label>
-          <label>
+          <label className="field-area">
             Khu vực ước lượng
             <input
               required
@@ -1114,7 +1184,7 @@ function ListingEditor({
               placeholder="Ví dụ: Cầu Giấy"
             />
           </label>
-          <label className="full">
+          <label className="field-description">
             Mô tả
             <textarea
               required
@@ -1123,7 +1193,7 @@ function ListingEditor({
               onChange={(e) => set("description", e.target.value)}
             />
           </label>
-          <label className="full">
+          <label className="field-defects">
             Lỗi hoặc điểm cần lưu ý
             <textarea
               required={form.condition === "Cần sửa chữa"}
@@ -1132,7 +1202,7 @@ function ListingEditor({
               onChange={(e) => set("defects", e.target.value)}
             />
           </label>
-          <label className="full">
+          <label className="field-images">
             Ảnh sản phẩm (1–5 ảnh, mỗi ảnh dưới 5MB)
             <input
               type="file"
@@ -1150,8 +1220,13 @@ function ListingEditor({
                 ? "Để trống nếu muốn giữ ảnh hiện tại."
                 : "Ảnh được tự động nén WebP trước khi lưu. Ảnh đầu tiên là ảnh bìa."}
             </small>
+            {files.length > 0 && (
+              <span className="selected-file-count">
+                <CheckCircle2 size={15} /> Đã chọn {files.length}/5 ảnh
+              </span>
+            )}
           </label>
-          <label className="full">
+          <label className="field-links">
             Hoặc URL ảnh HTTPS, mỗi dòng một ảnh
             <textarea
               value={imageLinks}
@@ -1159,7 +1234,7 @@ function ListingEditor({
               placeholder="https://example.com/anh-san-pham.webp"
             />
           </label>
-          <label className="toggle-row">
+          <label className="toggle-row field-negotiable">
             Cho phép thương lượng
             <input
               type="checkbox"
@@ -2524,7 +2599,13 @@ function AdminPage() {
     [allListings, setAllListings] = useState<Listing[]>([]),
     [reports, setReports] = useState<Report[]>([]),
     [verifications, setVerifications] = useState<Verification[]>([]),
-    [tab, setTab] = useState("reports");
+    [sentNotifications, setSentNotifications] = useState<
+      Array<{ id: string; title: string; message: string; targetType: string; targetId: string; createdAt: number }>
+    >([]),
+    [tab, setTab] = useState("reports"),
+    [verifyTab, setVerifyTab] = useState<Verification["status"]>("pending"),
+    [noticeAudience, setNoticeAudience] = useState<"all" | "user">("all"),
+    [adminBusy, setAdminBusy] = useState("");
   useEffect(() => {
     if (!admin) return;
     const a = onSnapshot(collection(db, "reports"), (s) =>
@@ -2538,13 +2619,38 @@ function AdminPage() {
     const c = onSnapshot(collection(db, "listings"), (s) =>
       setAllListings(s.docs.map((d) => ({ ...d.data(), id: d.id }) as Listing)),
     );
+    const d = onSnapshot(collection(db, "notifications"), (s) =>
+      setSentNotifications(
+        s.docs
+          .map((item) => ({ ...item.data(), id: item.id }) as (typeof sentNotifications)[number])
+          .sort((left, right) => right.createdAt - left.createdAt),
+      ),
+    );
     return () => {
       a();
       b();
       c();
+      d();
     };
   }, [admin]);
   if (!admin) return null;
+  const adminAction = async (
+    key: string,
+    action: () => Promise<unknown>,
+    success: string,
+  ) => {
+    setAdminBusy(key);
+    try {
+      await action();
+      toast(success);
+      return true;
+    } catch (reason) {
+      toast(errorMessage(reason), "error");
+      return false;
+    } finally {
+      setAdminBusy("");
+    }
+  };
   const report = async (
     r: Report,
     status: "under_review" | "resolved" | "rejected",
@@ -2569,12 +2675,71 @@ function AdminPage() {
       updatedAt: Date.now(),
     });
   };
+  const deleteListingAsAdmin = async (listing: Listing) => {
+    const batch = writeBatch(db);
+    batch.delete(doc(db, "listings", listing.id));
+    batch.delete(doc(db, "members", listing.ownerId, "slots", listing.slot));
+    await batch.commit();
+  };
+  const deleteMemberAsAdmin = async (member: Member) => {
+    const batch = writeBatch(db),
+      now = Date.now();
+    batch.set(doc(db, "moderation", member.id), {
+      status: "deleted",
+      reason: "Tài khoản đã bị quản trị viên xóa khỏi UniLoop",
+      updatedAt: now,
+    });
+    batch.delete(doc(db, "members", member.id));
+    batch.delete(doc(db, "studentBadges", member.id));
+    batch.delete(doc(db, "paymentProfiles", member.id));
+    for (let index = 0; index < 5; index++)
+      batch.delete(doc(db, "members", member.id, "slots", String(index)));
+    allListings
+      .filter(
+        (listing) =>
+          listing.ownerId === member.id &&
+          ["active", "draft", "hidden", "blocked"].includes(listing.status),
+      )
+      .forEach((listing) =>
+        batch.update(doc(db, "listings", listing.id), {
+          status: "blocked",
+          updatedAt: now,
+        }),
+      );
+    await batch.commit();
+  };
+  const sendAdminNotification = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const target = event.currentTarget,
+      form = new FormData(target),
+      targetType = String(form.get("targetType")),
+      targetId = targetType === "user" ? String(form.get("targetId")) : "";
+    const sent = await adminAction(
+      "notification",
+      () =>
+        addDoc(collection(db, "notifications"), {
+          targetType,
+          targetId,
+          title: String(form.get("title")).trim().slice(0, 120),
+          message: String(form.get("message")).trim().slice(0, 2000),
+          createdBy: auth.currentUser!.uid,
+          createdAt: Date.now(),
+        }),
+      targetType === "all"
+        ? "Đã gửi thông báo tới toàn bộ người dùng."
+        : "Đã gửi thông báo riêng.",
+    );
+    if (sent) {
+      target.reset();
+      setNoticeAudience("all");
+    }
+  };
   return (
     <main className="admin-page">
       <aside className="admin-sidebar">
         <Logo />
         <span>QUẢN TRỊ</span>
-        {["reports", "listings", "members", "verify"].map((x) => (
+        {["reports", "listings", "members", "verify", "notify"].map((x) => (
           <button
             className={tab === x ? "active" : ""}
             key={x}
@@ -2586,7 +2751,9 @@ function AdminPage() {
                 ? "Tin đăng"
                 : x === "members"
                   ? "Thành viên"
-                  : "Xác minh"}
+                  : x === "verify"
+                    ? "Xác minh"
+                    : "Gửi thông báo"}
           </button>
         ))}
         <button onClick={() => signOut(auth)}>
@@ -2625,11 +2792,40 @@ function AdminPage() {
                     {statusLabel[r.status] || r.status}
                   </small>
                 </div>
-                <button onClick={() => report(r, "under_review")}>
+                <button
+                  disabled={adminBusy === r.id}
+                  onClick={() =>
+                    void adminAction(
+                      r.id,
+                      () => report(r, "under_review"),
+                      "Đã chuyển báo cáo sang trạng thái đang xem.",
+                    )
+                  }
+                >
                   Đang xem
                 </button>
-                <button onClick={() => report(r, "resolved")}>Đã xử lý</button>
-                <button onClick={() => report(r, "rejected")}>Bác bỏ</button>
+                <button
+                  onClick={() =>
+                    void adminAction(
+                      r.id,
+                      () => report(r, "resolved"),
+                      "Đã xử lý báo cáo.",
+                    )
+                  }
+                >
+                  Đã xử lý
+                </button>
+                <button
+                  onClick={() =>
+                    void adminAction(
+                      r.id,
+                      () => report(r, "rejected"),
+                      "Đã bác bỏ báo cáo.",
+                    )
+                  }
+                >
+                  Bác bỏ
+                </button>
               </article>
             ))}
             {!reports.length && (
@@ -2650,14 +2846,34 @@ function AdminPage() {
                   </small>
                 </div>
                 <button
+                  disabled={adminBusy === x.id}
                   onClick={() =>
-                    updateDoc(doc(db, "listings", x.id), {
-                      status: "blocked",
-                      updatedAt: Date.now(),
-                    })
+                    void adminAction(
+                      x.id,
+                      () =>
+                        updateDoc(doc(db, "listings", x.id), {
+                          status: "blocked",
+                          updatedAt: Date.now(),
+                        }),
+                      "Đã khóa tin đăng.",
+                    )
                   }
                 >
                   Khóa tin
+                </button>
+                <button
+                  className="danger"
+                  disabled={adminBusy === x.id}
+                  onClick={() => {
+                    if (confirm(`Xóa vĩnh viễn tin “${x.title}”?`))
+                      void adminAction(
+                        x.id,
+                        () => deleteListingAsAdmin(x),
+                        "Đã xóa tin đăng.",
+                      );
+                  }}
+                >
+                  Xóa tin
                 </button>
               </article>
             ))}
@@ -2676,26 +2892,54 @@ function AdminPage() {
                   </small>
                 </div>
                 <button
+                  disabled={adminBusy === m.id}
                   onClick={() =>
-                    setDoc(doc(db, "moderation", m.id), {
-                      status: "restricted",
-                      reason: "Vi phạm tiêu chuẩn cộng đồng",
-                      updatedAt: Date.now(),
-                    })
+                    void adminAction(
+                      m.id,
+                      () =>
+                        setDoc(doc(db, "moderation", m.id), {
+                          status: "restricted",
+                          reason: "Vi phạm tiêu chuẩn cộng đồng",
+                          updatedAt: Date.now(),
+                        }),
+                      "Đã hạn chế thành viên.",
+                    )
                   }
                 >
                   Hạn chế
                 </button>
                 <button
                   onClick={() =>
-                    setDoc(doc(db, "moderation", m.id), {
-                      status: "active",
-                      reason: "",
-                      updatedAt: Date.now(),
-                    })
+                    void adminAction(
+                      m.id,
+                      () =>
+                        setDoc(doc(db, "moderation", m.id), {
+                          status: "active",
+                          reason: "",
+                          updatedAt: Date.now(),
+                        }),
+                      "Đã khôi phục thành viên.",
+                    )
                   }
                 >
                   Khôi phục
+                </button>
+                <button
+                  className="danger"
+                  onClick={() => {
+                    if (
+                      confirm(
+                        `Xóa ${m.name} khỏi UniLoop? Tài khoản sẽ bị khóa vĩnh viễn và hồ sơ công khai bị xóa.`,
+                      )
+                    )
+                      void adminAction(
+                        m.id,
+                        () => deleteMemberAsAdmin(m),
+                        "Đã xóa thành viên khỏi UniLoop.",
+                      );
+                  }}
+                >
+                  Xóa USER
                 </button>
               </article>
             ))}
@@ -2704,19 +2948,139 @@ function AdminPage() {
         {tab === "verify" && (
           <div className="admin-table">
             <h2>Yêu cầu xác minh</h2>
-            {verifications.map((v) => (
-              <article key={v.id}>
-                <div>
-                  <b>{v.schoolEmail}</b>
-                  <small>
-                    {v.university} · {statusLabel[v.status]}
-                  </small>
-                  <p>{v.note}</p>
-                </div>
-                <button onClick={() => verify(v, "verified")}>Duyệt</button>
-                <button onClick={() => verify(v, "rejected")}>Từ chối</button>
-              </article>
-            ))}
+            <div className="admin-subtabs">
+              {([
+                ["pending", "Chờ xác minh"],
+                ["verified", "Đã xác minh"],
+                ["rejected", "Đã từ chối"],
+              ] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  className={verifyTab === value ? "active" : ""}
+                  onClick={() => setVerifyTab(value)}
+                >
+                  {label}
+                  <span>
+                    {verifications.filter((item) => item.status === value).length}
+                  </span>
+                </button>
+              ))}
+            </div>
+            {verifications
+              .filter((item) => item.status === verifyTab)
+              .map((v) => (
+                <article key={v.id}>
+                  <div>
+                    <b>{v.schoolEmail}</b>
+                    <small>
+                      {v.university} · {statusLabel[v.status]}
+                    </small>
+                    <p>{v.note}</p>
+                  </div>
+                  {v.status === "pending" && (
+                    <>
+                      <button
+                        disabled={adminBusy === v.id}
+                        onClick={() =>
+                          void adminAction(
+                            v.id,
+                            () => verify(v, "verified"),
+                            "Đã xác minh thành viên.",
+                          )
+                        }
+                      >
+                        Duyệt
+                      </button>
+                      <button
+                        className="danger"
+                        disabled={adminBusy === v.id}
+                        onClick={() =>
+                          void adminAction(
+                            v.id,
+                            () => verify(v, "rejected"),
+                            "Đã từ chối yêu cầu xác minh.",
+                          )
+                        }
+                      >
+                        Từ chối
+                      </button>
+                    </>
+                  )}
+                </article>
+              ))}
+            {!verifications.some((item) => item.status === verifyTab) && (
+              <Empty
+                title="Không có yêu cầu"
+                text="Danh sách ở trạng thái này đang trống."
+              />
+            )}
+          </div>
+        )}
+        {tab === "notify" && (
+          <div className="admin-notification-layout">
+            <form className="admin-notification-form" onSubmit={sendAdminNotification}>
+              <span className="section-kicker">TRUYỀN THÔNG NỘI BỘ</span>
+              <h2>Gửi thông báo</h2>
+              <label>
+                Người nhận
+                <select
+                  name="targetType"
+                  value={noticeAudience}
+                  onChange={(event) =>
+                    setNoticeAudience(event.target.value as "all" | "user")
+                  }
+                >
+                  <option value="all">Toàn bộ người dùng</option>
+                  <option value="user">Một người dùng cụ thể</option>
+                </select>
+              </label>
+              <label>
+                Chọn người dùng nếu gửi riêng
+                <select
+                  name="targetId"
+                  defaultValue=""
+                  required={noticeAudience === "user"}
+                  disabled={noticeAudience === "all"}
+                >
+                  <option value="">Chọn thành viên</option>
+                  {members.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.name} · {member.university}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Tiêu đề
+                <input name="title" required maxLength={120} />
+              </label>
+              <label>
+                Nội dung
+                <textarea name="message" required maxLength={2000} />
+              </label>
+              <button disabled={adminBusy === "notification"}>
+                <Send size={17} />
+                {adminBusy === "notification" ? "Đang gửi…" : "Gửi thông báo"}
+              </button>
+            </form>
+            <section className="admin-table sent-notifications">
+              <h2>Đã gửi gần đây</h2>
+              {sentNotifications.slice(0, 12).map((notification) => (
+                <article key={notification.id}>
+                  <div>
+                    <b>{notification.title}</b>
+                    <p>{notification.message}</p>
+                    <small>
+                      {notification.targetType === "all"
+                        ? "Toàn bộ người dùng"
+                        : members.find((item) => item.id === notification.targetId)?.name ||
+                          "Người dùng riêng"} {" "}
+                      · {date(notification.createdAt)}
+                    </small>
+                  </div>
+                </article>
+              ))}
+            </section>
           </div>
         )}
       </section>
@@ -2808,9 +3172,15 @@ export default function App() {
   }, [page, selected]);
   useGSAP(
     () => {
+      const targets = root.current
+        ? Array.from(
+            root.current.querySelectorAll(":scope > main > *, :scope > section > *"),
+          )
+        : [];
+      if (!targets.length) return;
       const mm = gsap.matchMedia();
       mm.add("(prefers-reduced-motion: no-preference)", () =>
-        gsap.from(".page-motion > main > *, .page-motion > section > *", {
+        gsap.from(targets, {
           y: 18,
           autoAlpha: 0,
           duration: 0.55,
@@ -2821,7 +3191,7 @@ export default function App() {
       );
       return () => mm.revert();
     },
-    { scope: root, dependencies: [page], revertOnUpdate: true },
+    { dependencies: [page], revertOnUpdate: true },
   );
   if (!backend.ready)
     return (
