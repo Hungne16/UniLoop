@@ -8,5 +8,8 @@ dist/
 *.tsbuildinfo
 .playwright-cli/
 output/
+firestore-debug.log
+storage-debug.log
+ui-debug.log
 
 .vercel

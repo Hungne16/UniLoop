@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:rules": "firebase emulators:exec --only firestore \"node --test tests/firestore-rules.test.mjs\""
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
@@ -21,7 +22,11 @@
     "vite": "latest"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "@types/node": "^26.5.0",
     "@types/react": "latest",
-    "@types/react-dom": "latest"
+    "@types/react-dom": "latest",
+    "firebase-admin": "^14.3.0",
+    "firebase-tools": "^15.29.0"
   }
 }

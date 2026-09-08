@@ -1,66 +1,44 @@
 # UniLoop: Firebase + Vercel
 
-## Current integration
+## Production status
 
-The app uses Firebase Authentication, Firestore snapshots, and Storage uploads.
-Login is no longer simulated. Admin requires an admin=true custom claim, not an email check.
-Public listing grids start empty when Firestore contains no listings; they never silently fall back to demo data.
-Profiles, favorites, listings, offer creation and admin hiding listings use Firestore.
+- Firebase project: `uniloop-a2a9b`
+- Vercel domain: `https://uniloop-one.vercel.app`
+- Firestore security rules: deployed and covered by emulator tests
+- Authentication: Email/Password and Google wired to the real Firebase project
+- Admin: `admin123@edu.vn` has a trusted custom claim and an `admins/{uid}` record
+- Authorized domains include `uniloop-one.vercel.app`
+- Firestore starts empty by design; the UI never inserts fake marketplace statistics
 
-Still pending: transaction acceptance/completion, verified student workflow, report/review persistence, enforceable five-listing quota and orphan-upload cleanup.
-The earlier mock profile/admin components remain in source as design references, but are not used for signed-in production data.
+The application implements listings and drafts, favorites, search and filters, offers with a 24-hour expiry, counter-offers, atomic reservation, two-party completion, reviews, reports, student verification requests, moderation, and the five-open-listing quota.
 
-## Firebase console setup
+## Remaining Firebase console action
 
-Project: uniloop-a2a9b
+The current Google account can deploy rules but cannot create the project's default Storage bucket. Open Firebase Console > Storage > Get started with an owner/billing-enabled account, create the default bucket, then run:
 
-1. Authentication: Get started, enable Email/Password and Google.
-2. Authentication settings: add localhost and the exact production Vercel domain to Authorized domains.
-3. Firestore: create a Standard database in production mode. Choose a region appropriate for Vietnam, such as Singapore if offered. Region selection is a persistent infrastructure decision.
-4. Storage: create the default bucket. Review any billing upgrade requested by Firebase before proceeding.
-5. Authenticate the CLI with your own Google account:
+    npx firebase-tools deploy --only storage --project uniloop-a2a9b
 
-    npx firebase-tools login
-    npx firebase-tools deploy --only firestore:rules,storage --project uniloop-a2a9b
+Until that is done, listing creation accepts HTTPS image URLs as a production-safe fallback. File upload starts working automatically after the bucket and Storage rules are deployed.
 
-Rules intentionally deny unimplemented collections. Do not change them to public read/write.
+## Local verification
 
-## Admin account
+    npm install
+    npm run build
+    npm run test:rules
+    npm run dev
 
-Create admin123@edu.vn through Authentication > Users with your chosen password.
-The old requested demo password is not embedded in the application anymore.
-To grant privileges using a trusted machine:
+The rules tests cover private verification records, transactional five-slot quota, forged admin access, atomic offer acceptance, outsider denial, and review eligibility.
 
-    npm install --no-save firebase-admin
+## Trusted production setup
 
-Configure Google Application Default Credentials or GOOGLE_APPLICATION_CREDENTIALS outside the repository, then:
+The setup utility uses the already authenticated Firebase CLI session. It does not contain an access token or password:
 
-    node scripts/grant-admin.mjs admin123@edu.vn
+    $env:UNILOOP_ADMIN_EMAIL='admin123@edu.vn'
+    $env:UNILOOP_ADMIN_PASSWORD='<password>'
+    node scripts/configure-production.mjs
 
-Do not share service-account JSON in chat or put it in frontend environment variables.
-Sign out and sign in to refresh claims.
+Do not commit service-account JSON or place admin credentials in frontend environment variables.
 
-## Vercel
+## Release order
 
-Import this directory as a Vite project, or run:
-
-    npx vercel login
-    npx vercel
-
-Build command: npm run build. Output directory: dist.
-After preview verification:
-
-    npx vercel --prod
-
-Firebase browser configuration is included in src/firebase.ts; it is not a server credential.
-Access control depends on deployed rules and authenticated claims.
-
-## Verification before production
-
-- Register a test user, sign out, log back in, and verify the profile survives refresh.
-- Upload one listing with an image; verify it appears on another browser.
-- Save a favorite and reload.
-- Sign in as a second member and submit an offer; check the owner's profile.
-- Ensure a non-admin cannot change listing status or assign admin privileges.
-- Verify a wrong password fails and a signed-out browser cannot access private profiles.
-- Check the Storage bucket rules and Firestore rules in Firebase console after deployment.
+Push a tested commit to GitHub first. Vercel is connected to the repository and deploys `main`. Verify the live deployment only after the GitHub commit is visible.

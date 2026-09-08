@@ -1,42 +1,148 @@
 rules_version = '2';
 service cloud.firestore {
-  match /databases/{database}/documents {
-    function signedIn(){ return request.auth != null; }
-    function admin(){ return signedIn() && request.auth.token.admin == true; }
-    match /members/{uid} {
-      allow read: if signedIn() && (request.auth.uid == uid || admin());
-      allow create, update: if signedIn() && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['name','university','major','cohort','bio','updatedAt'])
-        && request.resource.data.name is string && request.resource.data.name.size() <= 100;
-      match /favorites/{id} {
-        allow read, write: if signedIn() && request.auth.uid == uid;
-      }
-    }
-    match /listings/{id} {
-      allow read: if resource.data.status == 'active' || admin() || (signedIn() && resource.data.ownerId == request.auth.uid);
-      allow create: if signedIn()
-        && request.resource.data.keys().hasOnly(['id','ownerId','title','price','image','images','condition','school','distance','area','type','color','description','status','createdAt'])
-        && request.resource.data.ownerId == request.auth.uid
-        && request.resource.data.status == 'active'
-        && request.resource.data.title is string && request.resource.data.title.size() > 0 && request.resource.data.title.size() <= 150
-        && request.resource.data.price is number && request.resource.data.price >= 0
-        && request.resource.data.type in ['sale','free','exchange']
-        && (request.resource.data.type != 'free' || request.resource.data.price == 0)
-        && request.resource.data.images is list && request.resource.data.images.size() > 0 && request.resource.data.images.size() <= 5;
-      allow update: if admin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
-      allow delete: if admin() || (signedIn() && resource.data.ownerId == request.auth.uid);
-    }
-    match /offers/{id} {
-      allow read: if signedIn() && (resource.data.buyerId == request.auth.uid || resource.data.sellerId == request.auth.uid || admin());
-      allow create: if signedIn()
-        && request.resource.data.keys().hasOnly(['buyerId','sellerId','listingId','price','message','status','createdAt'])
-        && request.resource.data.buyerId == request.auth.uid
-        && request.resource.data.sellerId != request.auth.uid
-        && request.resource.data.status == 'pending'
-        && request.resource.data.price is number && request.resource.data.price >= 0
-        && get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.ownerId == request.resource.data.sellerId
-        && get(/databases/$(database)/documents/listings/$(request.resource.data.listingId)).data.status == 'active';
-    }
-    match /{document=**} { allow read,write: if false; }
+ match /databases/{database}/documents {
+  function signed(){return request.auth != null;}
+  function admin(){return signed() && (request.auth.token.get('admin',false) == true || exists(/databases/$(database)/documents/admins/$(request.auth.uid)));}
+  function active(){return signed() && (!exists(/databases/$(database)/documents/moderation/$(request.auth.uid)) || get(/databases/$(database)/documents/moderation/$(request.auth.uid)).data.status == 'active');}
+  function own(uid){return active() && request.auth.uid == uid;}
+  function text(v,n){return v is string && v.size() <= n;}
+  function recent(v){return v is number && v >= request.time.toMillis()-60000 && v <= request.time.toMillis()+60000;}
+  function lp(id){return /databases/$(database)/documents/listings/$(id);}
+  function op(id){return /databases/$(database)/documents/offers/$(id);}
+  function sp(uid,slot){return /databases/$(database)/documents/members/$(uid)/slots/$(slot);}
+  function party(d){return active() && request.auth.uid in [d.buyerId,d.sellerId];}
+  function changed(fields){return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);}
+  function pair(d,status,id){
+   return getAfter(lp(d.listingId)).data.status == status && getAfter(lp(d.listingId)).data.chosenOfferId == id
+    && (d.exchangeListingId == '' || (getAfter(lp(d.exchangeListingId)).data.status == status && getAfter(lp(d.exchangeListingId)).data.chosenOfferId == id));
   }
+  match /admins/{uid}{allow get:if signed() && request.auth.uid == uid;}
+  match /moderation/{uid}{
+   allow read:if admin() || (signed() && request.auth.uid == uid);
+   allow create,update:if admin() && uid != request.auth.uid && request.resource.data.keys().hasOnly(['status','reason','updatedAt']) && request.resource.data.status in ['active','restricted'] && text(request.resource.data.reason,1000);
+  }
+  match /members/{uid}{
+   allow read:if true;
+   allow create,update:if own(uid) && request.resource.data.keys().hasOnly(['name','university','major','cohort','bio','photoURL','socialURL','updatedAt'])
+    && text(request.resource.data.name,100) && request.resource.data.name.size()>0
+    && text(request.resource.data.university,100) && text(request.resource.data.major,100) && text(request.resource.data.cohort,30)
+    && text(request.resource.data.bio,1000) && text(request.resource.data.photoURL,2000) && text(request.resource.data.socialURL,2000);
+   match /favorites/{id}{allow read,delete:if own(uid);allow create,update:if own(uid) && request.resource.data.keys().hasOnly(['createdAt']);}
+   match /slots/{slot}{
+    allow read:if own(uid);
+    allow create:if own(uid) && slot in ['0','1','2','3','4'] && request.resource.data.keys().hasOnly(['listingId'])
+     && getAfter(lp(request.resource.data.listingId)).data.ownerId == uid && getAfter(lp(request.resource.data.listingId)).data.slot == slot;
+    allow update:if own(uid) && request.resource.data == resource.data;
+    allow delete:if signed() && (!existsAfter(lp(resource.data.listingId)) || getAfter(lp(resource.data.listingId)).data.status == 'sold');
+   }
+  }
+  function validListing(d){
+   return d.keys().hasOnly(['ownerId','title','price','type','description','condition','category','school','area','images','imagePaths','status','slot','exchangeTarget','defects','negotiable','createdAt','expiresAt','updatedAt','chosenOfferId'])
+    && text(d.title,150) && d.title.size()>0 && text(d.description,5000) && text(d.defects,2000)
+    && text(d.area,200) && text(d.school,100) && text(d.category,100)
+    && d.type in ['sale','free','exchange','sale_or_exchange'] && d.price is number && d.price>=0 && d.price<=1000000000
+    && (d.type!='free' || d.price==0) && (!(d.type in ['sale','sale_or_exchange']) || d.price>0)
+    && d.condition in ['Mới','Như mới','Tốt','Đã qua sử dụng','Cần sửa chữa'] && (d.condition!='Cần sửa chữa' || d.defects.size()>0)
+    && text(d.exchangeTarget,500) && d.negotiable is bool && d.images is list && d.images.size()>0 && d.images.size()<=5
+    && d.imagePaths is list && d.imagePaths.size()==d.images.size() && d.slot in ['0','1','2','3','4']
+    && d.expiresAt is number && d.expiresAt <= request.time.toMillis()+2592060000;
+  }
+  match /listings/{id}{
+   allow read:if resource.data.status in ['active','reserved','sold'] || admin() || (signed() && resource.data.ownerId == request.auth.uid);
+   allow create:if own(request.resource.data.ownerId) && validListing(request.resource.data) && request.resource.data.status in ['active','draft']
+    && request.resource.data.chosenOfferId=='' && recent(request.resource.data.createdAt)
+    && getAfter(sp(request.auth.uid,request.resource.data.slot)).data.listingId==id;
+   allow update:if (
+    own(resource.data.ownerId) && resource.data.status in ['active','draft','hidden'] && request.resource.data.status in ['active','draft','hidden']
+    && validListing(request.resource.data) && request.resource.data.ownerId==resource.data.ownerId && request.resource.data.slot==resource.data.slot
+    && request.resource.data.createdAt==resource.data.createdAt && request.resource.data.chosenOfferId==resource.data.chosenOfferId
+   ) || (
+    admin() && resource.data.status in ['active','draft','hidden','blocked'] && changed(['status','updatedAt']) && request.resource.data.status in ['active','hidden','blocked']
+   ) || (
+    active() && resource.data.status=='active' && resource.data.expiresAt>request.time.toMillis()
+    && changed(['status','chosenOfferId']) && request.resource.data.status=='reserved'
+    && getAfter(op(request.resource.data.chosenOfferId)).data.status=='accepted'
+    && id in [getAfter(op(request.resource.data.chosenOfferId)).data.listingId,getAfter(op(request.resource.data.chosenOfferId)).data.exchangeListingId]
+    && party(getAfter(op(request.resource.data.chosenOfferId)).data)
+   ) || (
+    active() && resource.data.status=='reserved' && party(get(op(resource.data.chosenOfferId)).data)
+    && ((changed(['status']) && request.resource.data.status=='sold'
+      && getAfter(op(resource.data.chosenOfferId)).data.status=='completed' && !existsAfter(sp(resource.data.ownerId,resource.data.slot)))
+     || (changed(['status','chosenOfferId']) && request.resource.data.status=='active' && request.resource.data.chosenOfferId==''
+      && getAfter(op(resource.data.chosenOfferId)).data.status=='cancelled'))
+   );
+   allow delete:if own(resource.data.ownerId) && resource.data.status in ['active','draft','hidden'] && !existsAfter(sp(resource.data.ownerId,resource.data.slot));
+  }
+  match /offers/{id}{
+   allow read:if party(resource.data) || admin();
+   allow create:if own(request.resource.data.buyerId)
+    && request.resource.data.keys().hasOnly(['buyerId','sellerId','listingId','title','exchangeListingId','price','counterPrice','message','status','buyerConfirmed','sellerConfirmed','meetingPlace','meetingTime','createdAt','expiresAt','updatedAt'])
+    && request.resource.data.sellerId!=request.auth.uid && request.resource.data.sellerId==get(lp(request.resource.data.listingId)).data.ownerId
+    && get(lp(request.resource.data.listingId)).data.status=='active' && get(lp(request.resource.data.listingId)).data.expiresAt>request.time.toMillis()
+    && request.resource.data.price is number && request.resource.data.price>=0 && request.resource.data.price<=1000000000
+    && (get(lp(request.resource.data.listingId)).data.type!='free' || request.resource.data.price==0)
+    && (get(lp(request.resource.data.listingId)).data.type!='exchange' || request.resource.data.exchangeListingId!='')
+    && (request.resource.data.exchangeListingId=='' || (get(lp(request.resource.data.exchangeListingId)).data.ownerId==request.auth.uid && get(lp(request.resource.data.exchangeListingId)).data.status=='active' && request.resource.data.exchangeListingId!=request.resource.data.listingId))
+    && request.resource.data.status=='pending' && request.resource.data.counterPrice==0 && !request.resource.data.buyerConfirmed && !request.resource.data.sellerConfirmed
+    && request.resource.data.meetingPlace=='' && request.resource.data.meetingTime=='' && text(request.resource.data.message,2000) && text(request.resource.data.title,150)
+    && recent(request.resource.data.createdAt) && request.resource.data.expiresAt<=request.time.toMillis()+86460000 && request.resource.data.expiresAt>request.time.toMillis();
+   allow update:if party(resource.data) && (
+    (resource.data.status=='pending' && request.auth.uid==resource.data.sellerId && request.resource.data.status=='countered' && resource.data.expiresAt>request.time.toMillis()
+     && request.resource.data.counterPrice is number && request.resource.data.counterPrice>0 && request.resource.data.counterPrice<=1000000000
+     && get(lp(resource.data.listingId)).data.type!='free' && changed(['status','counterPrice','updatedAt']))
+    || (resource.data.status in ['pending','countered'] && resource.data.expiresAt>request.time.toMillis()
+     && ((resource.data.status=='pending' && request.auth.uid==resource.data.sellerId) || (resource.data.status=='countered' && request.auth.uid==resource.data.buyerId))
+     && request.resource.data.status=='accepted' && request.resource.data.price==(resource.data.status=='countered'?resource.data.counterPrice:resource.data.price)
+     && changed(['status','price','updatedAt']) && get(lp(resource.data.listingId)).data.status=='active' && pair(resource.data,'reserved',id))
+    || (resource.data.status in ['pending','countered'] && request.auth.uid==resource.data.sellerId && request.resource.data.status=='rejected' && changed(['status','updatedAt']))
+    || (resource.data.status in ['pending','countered','accepted'] && !resource.data.buyerConfirmed && !resource.data.sellerConfirmed
+     && request.resource.data.status=='cancelled' && changed(['status','updatedAt']) && (resource.data.status!='accepted' || pair(resource.data,'active','')))
+    || (resource.data.status=='accepted' && request.resource.data.status=='accepted' && changed(['meetingPlace','meetingTime','updatedAt'])
+     && text(request.resource.data.meetingPlace,300) && text(request.resource.data.meetingTime,40))
+    || (resource.data.status=='accepted' && changed(['buyerConfirmed','sellerConfirmed','status','updatedAt'])
+     && request.resource.data.buyerConfirmed==(resource.data.buyerConfirmed || request.auth.uid==resource.data.buyerId)
+     && request.resource.data.sellerConfirmed==(resource.data.sellerConfirmed || request.auth.uid==resource.data.sellerId)
+     && request.resource.data.status==(request.resource.data.buyerConfirmed && request.resource.data.sellerConfirmed?'completed':'accepted')
+     && (request.resource.data.status!='completed' || pair(resource.data,'sold',id)))
+   );
+  }
+  match /reviews/{id}{
+   allow read:if true;
+   allow create:if own(request.resource.data.reviewerId) && request.resource.data.keys().hasOnly(['offerId','reviewerId','revieweeId','rating','text','reply','createdAt','updatedAt'])
+    && id==request.resource.data.offerId+'_'+request.auth.uid && get(op(request.resource.data.offerId)).data.status=='completed'
+    && party(get(op(request.resource.data.offerId)).data)
+    && request.resource.data.revieweeId==(request.auth.uid==get(op(request.resource.data.offerId)).data.buyerId?get(op(request.resource.data.offerId)).data.sellerId:get(op(request.resource.data.offerId)).data.buyerId)
+    && request.resource.data.rating is int && request.resource.data.rating>=1 && request.resource.data.rating<=5 && text(request.resource.data.text,2000)
+    && request.resource.data.reply=='' && recent(request.resource.data.createdAt);
+   allow update:if (own(resource.data.reviewerId) && request.time.toMillis()<resource.data.createdAt+86400000 && changed(['rating','text','updatedAt'])
+    && request.resource.data.rating is int && request.resource.data.rating>=1 && request.resource.data.rating<=5 && text(request.resource.data.text,2000))
+    || (own(resource.data.revieweeId) && changed(['reply','updatedAt']) && text(request.resource.data.reply,2000));
+   allow delete:if admin();
+  }
+  match /reports/{id}{
+   allow read:if admin() || (signed() && resource.data.reporterId==request.auth.uid);
+   allow create:if own(request.resource.data.reporterId) && request.resource.data.keys().hasOnly(['reporterId','targetType','targetId','reason','description','status','response','createdAt'])
+    && request.resource.data.targetType in ['listing','member','review','transaction'] && text(request.resource.data.targetId,200)
+    && text(request.resource.data.reason,200) && text(request.resource.data.description,3000) && request.resource.data.status=='new' && request.resource.data.response=='' && recent(request.resource.data.createdAt);
+   allow update:if admin() && changed(['status','response','updatedAt']) && request.resource.data.status in ['under_review','resolved','rejected'] && text(request.resource.data.response,2000);
+  }
+  match /verifications/{uid}{
+   allow read:if admin() || (signed() && request.auth.uid==uid);
+   allow create:if own(uid) && request.resource.data.keys().hasOnly(['university','schoolEmail','note','status','response','updatedAt'])
+    && text(request.resource.data.schoolEmail,200) && text(request.resource.data.university,100) && text(request.resource.data.note,1000)
+    && request.resource.data.status=='pending' && request.resource.data.response=='';
+   allow update:if admin() && changed(['status','response','updatedAt']) && request.resource.data.status in ['verified','rejected'] && text(request.resource.data.response,2000);
+  }
+  match /studentBadges/{uid}{allow read:if true;allow write:if admin();}
+  match /universities/{id}{allow read:if true;allow write:if admin() && text(request.resource.data.name,150);}
+  match /categories/{id}{allow read:if true;allow write:if admin() && text(request.resource.data.name,150);}
+  match /wanted/{id}{
+   allow read:if true;
+   allow create:if own(request.resource.data.ownerId) && request.resource.data.keys().hasOnly(['ownerId','title','description','school','budget','createdAt','expiresAt'])
+    && text(request.resource.data.title,150) && text(request.resource.data.description,3000) && text(request.resource.data.school,100)
+    && request.resource.data.budget is number && request.resource.data.budget>=0 && recent(request.resource.data.createdAt) && request.resource.data.expiresAt<=request.time.toMillis()+1209660000;
+   allow delete:if own(resource.data.ownerId)||admin();
+  }
+  match /{document=**}{allow read,write:if false;}
+ }
 }
