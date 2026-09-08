@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Bell,
+  CalendarDays,
   Check,
   CheckCircle2,
   Clock3,
@@ -21,6 +22,7 @@ import {
   ShieldCheck,
   Sparkles,
   Star,
+  UserRound,
   Users,
   X,
 } from "lucide-react";
@@ -94,6 +96,7 @@ type Page =
   | "saved"
   | "auth"
   | "profile"
+  | "member"
   | "offers"
   | "admin";
 const blank: ListingInput = {
@@ -108,6 +111,24 @@ const blank: ListingInput = {
   exchangeTarget: "",
   defects: "",
   negotiable: true,
+};
+
+const localDateInput = (value = new Date()) => {
+  const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
+};
+const meetingLabel = (value: string) => {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : parsed.toLocaleString("vi-VN", {
+        weekday: "short",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
 };
 
 function Logo({ go }: { go?: () => void }) {
@@ -585,7 +606,15 @@ function Explore({
   );
 }
 
-function Detail({ item, go }: { item: Listing; go: (p: Page) => void }) {
+function Detail({
+  item,
+  go,
+  openMember,
+}: {
+  item: Listing;
+  go: (p: Page) => void;
+  openMember: (id: string) => void;
+}) {
   const { members, badges, user, saved, toggleSaved } = useBackend(),
     seller = members.find((x) => x.id === item.ownerId),
     [modal, setModal] = useState(false),
@@ -735,7 +764,7 @@ function Detail({ item, go }: { item: Listing; go: (p: Page) => void }) {
             </div>
           </div>
           <p>{seller?.bio || "Thành viên chưa viết giới thiệu."}</p>
-          <button onClick={() => go("profile")}>
+          <button onClick={() => openMember(item.ownerId)}>
             Xem hồ sơ <ArrowRight />
           </button>
         </aside>
@@ -779,6 +808,7 @@ function Detail({ item, go }: { item: Listing; go: (p: Page) => void }) {
                       value={price}
                       onChange={(e) => setPrice(Number(e.target.value))}
                     />
+                    <small>Hiển thị: {money(price)}</small>
                   </label>
                 )}
                 {item.type.includes("exchange") && (
@@ -914,6 +944,9 @@ function ListingEditor({
               value={form.type === "free" ? 0 : form.price}
               onChange={(e) => set("price", Number(e.target.value))}
             />
+            <small>
+              Hiển thị: {money(form.type === "free" ? 0 : form.price)}
+            </small>
           </label>
           <label>
             Danh mục
@@ -1255,13 +1288,14 @@ function AuthPage({
   );
 }
 
-function OffersPage() {
+function OffersPage({ openMember }: { openMember: (id: string) => void }) {
   const { offers, user, reviews, members, products, ownListings } =
       useBackend(),
     [busy, setBusy] = useState(""),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [openChat, setOpenChat] = useState(""),
+    [meetingOffer, setMeetingOffer] = useState<Offer | null>(null),
     [review, setReview] = useState<
       Record<string, { rating: number; text: string }>
     >({});
@@ -1339,6 +1373,12 @@ function OffersPage() {
                           .join(" · ") || "Chưa cập nhật thông tin học tập"}
                       </span>
                     </div>
+                    <button
+                      className="profile-link"
+                      onClick={() => openMember(counterpartId)}
+                    >
+                      <UserRound size={15} /> Hồ sơ
+                    </button>
                   </div>
                   {o.message && (
                     <p className="offer-note">
@@ -1400,15 +1440,10 @@ function OffersPage() {
                   {o.status === "accepted" && (
                     <>
                       <button
-                        onClick={() => {
-                          const place = prompt("Địa điểm gặp:") || "";
-                          const time =
-                            prompt("Thời gian (ví dụ 18:00 10/09):") || "";
-                          if (place && time)
-                            act(o.id, () => scheduleMeeting(o, place, time));
-                        }}
+                        onClick={() => setMeetingOffer(o)}
                       >
-                        Hẹn gặp
+                        <CalendarDays size={16} />
+                        {o.meetingPlace ? "Đổi lịch hẹn" : "Hẹn gặp"}
                       </button>
                       {canConfirm && (
                         <button
@@ -1420,9 +1455,13 @@ function OffersPage() {
                     </>
                   )}
                   {o.meetingPlace && (
-                    <small>
-                      {o.meetingPlace} · {o.meetingTime}
-                    </small>
+                    <div className="meeting-summary">
+                      <MapPin size={15} />
+                      <span>
+                        <b>{o.meetingPlace}</b>
+                        {meetingLabel(o.meetingTime)}
+                      </span>
+                    </div>
                   )}
                   {o.status === "completed" && (
                     <div className="inline-review">
@@ -1512,7 +1551,101 @@ function OffersPage() {
           />
         )}
       </div>
+      {meetingOffer && (
+        <MeetingModal
+          offer={meetingOffer}
+          busy={busy === meetingOffer.id}
+          onClose={() => setMeetingOffer(null)}
+          onSave={(place, time) =>
+            act(meetingOffer.id, async () => {
+              await scheduleMeeting(meetingOffer, place, time);
+              setMeetingOffer(null);
+              setNotice("Đã cập nhật lịch hẹn cho hai bên.");
+            })
+          }
+        />
+      )}
     </main>
+  );
+}
+
+function MeetingModal({
+  offer,
+  busy,
+  onClose,
+  onSave,
+}: {
+  offer: Offer;
+  busy: boolean;
+  onClose: () => void;
+  onSave: (place: string, time: string) => Promise<void>;
+}) {
+  const previous = new Date(offer.meetingTime),
+    validPrevious = !Number.isNaN(previous.getTime()),
+    [place, setPlace] = useState(offer.meetingPlace || ""),
+    [day, setDay] = useState(
+      validPrevious ? localDateInput(previous) : localDateInput(),
+    ),
+    [time, setTime] = useState(
+      validPrevious
+        ? previous.toLocaleTimeString("en-GB", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : "18:00",
+    );
+
+  return (
+    <div className="modal-backdrop meeting-backdrop" role="presentation">
+      <form
+        className="meeting-modal"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void onSave(place, new Date(`${day}T${time}`).toISOString());
+        }}
+      >
+        <button type="button" className="close" onClick={onClose}>
+          <X />
+        </button>
+        <span className="section-kicker">LỊCH HẸN GIAO DỊCH</span>
+        <h2>Chọn thời gian gặp</h2>
+        <p>Thông tin này chỉ hiển thị cho hai bên trong giao dịch.</p>
+        <label>
+          <MapPin size={17} /> Địa điểm
+          <input
+            required
+            maxLength={300}
+            value={place}
+            onChange={(event) => setPlace(event.target.value)}
+            placeholder="Ví dụ: Sảnh thư viện, cổng A..."
+          />
+        </label>
+        <div className="meeting-fields">
+          <label>
+            <CalendarDays size={17} /> Ngày gặp
+            <input
+              required
+              type="date"
+              min={localDateInput()}
+              value={day}
+              onChange={(event) => setDay(event.target.value)}
+            />
+          </label>
+          <label>
+            <Clock3 size={17} /> Giờ gặp
+            <input
+              required
+              type="time"
+              value={time}
+              onChange={(event) => setTime(event.target.value)}
+            />
+          </label>
+        </div>
+        <button className="meeting-submit" disabled={busy || !place.trim()}>
+          {busy ? "Đang lưu…" : "Xác nhận lịch hẹn"}
+        </button>
+      </form>
+    </div>
   );
 }
 
@@ -1625,8 +1758,196 @@ function OfferChat({
   );
 }
 
+function TransactionHistory({
+  offers,
+  memberId,
+  members,
+  title = "Giao dịch đã hoàn tất",
+}: {
+  offers: Offer[];
+  memberId: string;
+  members: Member[];
+  title?: string;
+}) {
+  const completed = offers.filter(
+    (offer) =>
+      offer.status === "completed" &&
+      (offer.buyerId === memberId || offer.sellerId === memberId),
+  );
+  return (
+    <section className="transaction-history">
+      <div className="section-heading compact">
+        <div>
+          <span className="section-kicker">LỊCH SỬ MINH BẠCH</span>
+          <h2>{title}</h2>
+        </div>
+        <span>{completed.length} giao dịch</span>
+      </div>
+      <div className="transaction-list">
+        {completed.map((offer) => {
+          const wasSeller = offer.sellerId === memberId,
+            counterpartId = wasSeller ? offer.buyerId : offer.sellerId,
+            counterpart = members.find((item) => item.id === counterpartId);
+          return (
+            <article key={offer.id}>
+              <div className="transaction-icon">
+                <Check size={18} />
+              </div>
+              <div>
+                <strong>{offer.title}</strong>
+                <span>
+                  {wasSeller ? "Đã trao lại cho" : "Đã nhận từ"} {" "}
+                  {counterpart?.name || "Thành viên UniLoop"}
+                </span>
+              </div>
+              <div className="transaction-meta">
+                <b>{money(offer.price)}</b>
+                <time>{date(offer.updatedAt)}</time>
+              </div>
+            </article>
+          );
+        })}
+        {!completed.length && (
+          <div className="history-empty">
+            <Recycle />
+            <p>Chưa có giao dịch hoàn tất để hiển thị.</p>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function PublicProfilePage({
+  memberId,
+  go,
+  openListing,
+}: {
+  memberId: string;
+  go: (page: Page) => void;
+  openListing: (listing: Listing) => void;
+}) {
+  const { user, members, products, reviews, offers, badges } = useBackend(),
+    member = members.find((item) => item.id === memberId),
+    memberListings = products.filter((item) => item.ownerId === memberId),
+    feedback = reviews.filter((item) => item.revieweeId === memberId),
+    score = feedback.length
+      ? (feedback.reduce((sum, item) => sum + item.rating, 0) / feedback.length).toFixed(1)
+      : "—",
+    sharedOffers = offers.filter(
+      (offer) =>
+        offer.status === "completed" &&
+        (offer.buyerId === memberId || offer.sellerId === memberId),
+    );
+
+  if (!member)
+    return (
+      <main className="profile-page container">
+        <button className="back-link" onClick={() => go("explore")}>
+          <ArrowLeft /> Quay lại
+        </button>
+        <Empty
+          title="Không tìm thấy hồ sơ"
+          text="Thành viên này chưa cập nhật hồ sơ công khai."
+        />
+      </main>
+    );
+
+  return (
+    <main className="profile-page public-profile container">
+      <button
+        className="back-link"
+        onClick={() => go(user ? "offers" : "explore")}
+      >
+        <ArrowLeft /> Quay lại
+      </button>
+      <section className="profile-hero">
+        <Avatar member={member} />
+        <div>
+          <span className="section-kicker">HỒ SƠ CÔNG KHAI</span>
+          <h1>
+            {member.name || "Thành viên UniLoop"} {" "}
+            {badges.includes(memberId) && <ShieldCheck />}
+          </h1>
+          <p>
+            {[member.university, member.major, member.cohort]
+              .filter(Boolean)
+              .join(" · ") || "Chưa cập nhật thông tin học tập"}
+          </p>
+        </div>
+        <div className="profile-metrics">
+          <span>
+            <b>{score}</b>Điểm uy tín
+          </span>
+          <span>
+            <b>{feedback.length}</b>Nhận xét
+          </span>
+          <span>
+            <b>{memberListings.length}</b>Tin đang mở
+          </span>
+        </div>
+      </section>
+      <div className="public-profile-grid">
+        <section className="public-about">
+          <span className="section-kicker">GIỚI THIỆU</span>
+          <h2>Thông tin thành viên</h2>
+          <p>{member.bio || "Thành viên chưa viết phần giới thiệu."}</p>
+          {badges.includes(memberId) && (
+            <div className="verified-note">
+              <ShieldCheck /> Đã được UniLoop xác minh thông tin sinh viên
+            </div>
+          )}
+          {safeURL(member.socialURL) && (
+            <a href={safeURL(member.socialURL)} target="_blank" rel="noreferrer">
+              Xem liên kết công khai <ArrowRight size={16} />
+            </a>
+          )}
+        </section>
+        <section className="review-panel">
+          <span className="section-kicker">ĐÁNH GIÁ THỰC TẾ</span>
+          <h2>Người khác nói gì?</h2>
+          <div className="public-reviews">
+            {feedback.slice(0, 6).map((review) => {
+              const author = members.find((item) => item.id === review.reviewerId);
+              return (
+                <article key={review.id}>
+                  <div>
+                    <strong>{author?.name || "Thành viên UniLoop"}</strong>
+                    <span>{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</span>
+                  </div>
+                  <p>{review.text}</p>
+                </article>
+              );
+            })}
+            {!feedback.length && <p>Chưa có đánh giá cho thành viên này.</p>}
+          </div>
+        </section>
+      </div>
+      {user && (
+        <TransactionHistory
+          offers={sharedOffers}
+          memberId={memberId}
+          members={members}
+          title="Giao dịch đã hoàn tất cùng bạn"
+        />
+      )}
+      {memberListings.length > 0 && (
+        <section className="member-listings">
+          <div className="section-heading compact">
+            <div>
+              <span className="section-kicker">ĐANG HOẠT ĐỘNG</span>
+              <h2>Tin của thành viên</h2>
+            </div>
+          </div>
+          <Grid items={memberListings} open={openListing} />
+        </section>
+      )}
+    </main>
+  );
+}
+
 function ProfilePage({ editListing }: { editListing: (x: Listing) => void }) {
-  const { user, members, ownListings, reviews, verification, badges } =
+  const { user, members, ownListings, reviews, verification, badges, offers } =
       useBackend(),
     me = members.find((x) => x.id === user?.uid),
     [form, setForm] = useState({
@@ -1835,6 +2156,11 @@ function ProfilePage({ editListing }: { editListing: (x: Listing) => void }) {
               />
             )}
           </div>
+          <TransactionHistory
+            offers={offers}
+            memberId={user.uid}
+            members={members}
+          />
         </section>
         <aside>
           <form className="profile-info-card" onSubmit={verify}>
@@ -2088,23 +2414,33 @@ const pages: Page[] = [
   "saved",
   "auth",
   "profile",
+  "member",
   "offers",
   "admin",
 ];
 const pageFromHash = (): Page => {
-  const candidate = location.hash.slice(1) as Page;
+  const hash = location.hash.slice(1),
+    candidate = (hash.startsWith("member/") ? "member" : hash) as Page;
   return pages.includes(candidate) ? candidate : "home";
 };
+const memberFromHash = () =>
+  location.hash.startsWith("#member/")
+    ? decodeURIComponent(location.hash.slice("#member/".length))
+    : "";
 
 export default function App() {
   const backend = useBackend(),
     [page, setPage] = useState<Page>(pageFromHash),
     [term, setTerm] = useState(""),
     [selected, setSelected] = useState<Listing | null>(null),
+    [selectedMemberId, setSelectedMemberId] = useState(memberFromHash),
     [editing, setEditing] = useState<Listing | null>(null),
     root = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const syncHash = () => setPage(pageFromHash());
+    const syncHash = () => {
+      setPage(pageFromHash());
+      setSelectedMemberId(memberFromHash());
+    };
     addEventListener("hashchange", syncHash);
     return () => removeEventListener("hashchange", syncHash);
   }, []);
@@ -2120,6 +2456,16 @@ export default function App() {
     setSelected(x);
     go("detail");
   };
+  const openMember = (id: string) => {
+    if (backend.user?.uid === id) {
+      go("profile");
+      return;
+    }
+    setSelectedMemberId(id);
+    setPage("member");
+    location.hash = "member/" + encodeURIComponent(id);
+    scrollTo({ top: 0, behavior: "smooth" });
+  };
   useEffect(() => {
     if (page === "auth" && backend.ready && backend.user)
       go(backend.admin ? "admin" : "home");
@@ -2132,12 +2478,15 @@ export default function App() {
     )
       go("auth");
     if (page === "detail" && !selected) go("explore");
-  }, [backend.ready, backend.admin, backend.user, page, selected]);
+    if (page === "member" && !selectedMemberId) go("explore");
+  }, [backend.ready, backend.admin, backend.user, page, selected, selectedMemberId]);
   useEffect(() => {
     document.title =
       (selected && page === "detail"
         ? selected.title
-        : "UniLoop Campus Marketplace") + " — UniLoop";
+        : page === "member"
+          ? "Hồ sơ thành viên"
+          : "UniLoop Campus Marketplace") + " — UniLoop";
   }, [page, selected]);
   useGSAP(
     () => {
@@ -2191,7 +2540,9 @@ export default function App() {
       {page === "explore" && (
         <Explore open={open} term={term} setTerm={setTerm} />
       )}{" "}
-      {page === "detail" && selected && <Detail item={selected} go={go} />}{" "}
+      {page === "detail" && selected && (
+        <Detail item={selected} go={go} openMember={openMember} />
+      )}{" "}
       {page === "create" && (
         <ListingEditor
           editing={editing}
@@ -2211,7 +2562,14 @@ export default function App() {
           />
         </main>
       )}{" "}
-      {page === "offers" && <OffersPage />}{" "}
+      {page === "offers" && <OffersPage openMember={openMember} />}{" "}
+      {page === "member" && selectedMemberId && (
+        <PublicProfilePage
+          memberId={selectedMemberId}
+          go={go}
+          openListing={open}
+        />
+      )}{" "}
       {page === "profile" && (
         <ProfilePage
           editListing={(x) => {

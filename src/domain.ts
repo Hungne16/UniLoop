@@ -36,7 +36,7 @@ export interface Report {
 export interface Verification {
   id:string; university:string; schoolEmail:string; note:string; status:'pending'|'verified'|'rejected'; response:string; updatedAt:number
 }
-export const money=(price:number)=>price===0?'Miễn phí':price.toLocaleString('vi-VN')+'đ'
+export const money=(price:number)=>price===0?'Miễn phí':Math.round(price).toString().replace(/\B(?=(\d{3})+(?!\d))/g,'.')+'đ'
 export const date=(time:number)=>new Date(time).toLocaleDateString('vi-VN')
 export const statusLabel:Record<string,string>={draft:'Bản nháp',active:'Đang bán',reserved:'Đang giữ',sold:'Đã giao dịch',hidden:'Đã ẩn',blocked:'Bị khóa',pending:'Chờ phản hồi',countered:'Có giá đề xuất lại',accepted:'Đã thống nhất',completed:'Hoàn tất',cancelled:'Đã hủy',rejected:'Đã từ chối',new:'Mới',under_review:'Đang xem xét',resolved:'Đã xử lý',verified:'Đã xác minh'}
 export function available(listing:Listing){return listing.status==='active'&&listing.expiresAt>Date.now()}

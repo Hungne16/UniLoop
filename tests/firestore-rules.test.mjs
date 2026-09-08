@@ -206,6 +206,13 @@ test("seller can atomically accept, outsider cannot confirm", async () => {
     chosenOfferId: "o1",
   });
   await assertSucceeds(batch.commit());
+  await assertSucceeds(
+    updateDoc(doc(db("buyer"), "offers/o1"), {
+      meetingPlace: "Sảnh thư viện",
+      meetingTime: new Date(Date.now() + 3600000).toISOString(),
+      updatedAt: now(),
+    }),
+  );
   await assertFails(
     updateDoc(doc(db("outsider"), "offers/o1"), {
       buyerConfirmed: true,
