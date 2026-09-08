@@ -1250,15 +1250,17 @@ function AuthPage({
 }
 
 function OffersPage() {
-  const { offers, user } = useBackend(),
+  const { offers, user, reviews } = useBackend(),
     [busy, setBusy] = useState(""),
     [error, setError] = useState(""),
+    [notice, setNotice] = useState(""),
     [review, setReview] = useState<
       Record<string, { rating: number; text: string }>
     >({});
   async function act(id: string, fn: () => Promise<unknown>) {
     setBusy(id);
     setError("");
+    setNotice("");
     try {
       await fn();
     } catch (e) {
@@ -1280,10 +1282,17 @@ function OffersPage() {
         món đồ.
       </p>
       {error && <p className="auth-error">{error}</p>}
+      {notice && <p role="status">{notice}</p>}
       <div className="offer-list">
         {offers.length ? (
           offers.map((o) => {
             const incoming = o.sellerId === user.uid,
+              existingReview = reviews.find(
+                (item) => item.offerId === o.id && item.reviewerId === user.uid,
+              ),
+              reviewEditable =
+                !existingReview ||
+                Date.now() < existingReview.createdAt + 24 * 60 * 60 * 1000,
               canConfirm =
                 o.status === "accepted" &&
                 !(incoming ? o.sellerConfirmed : o.buyerConfirmed);
@@ -1372,13 +1381,17 @@ function OffersPage() {
                   {o.status === "completed" && (
                     <div className="inline-review">
                       <select
-                        value={review[o.id]?.rating || 5}
+                        aria-label={`Số sao cho ${o.title}`}
+                        disabled={!reviewEditable || busy === o.id}
+                        value={
+                          review[o.id]?.rating ?? existingReview?.rating ?? 5
+                        }
                         onChange={(e) =>
                           setReview((v) => ({
                             ...v,
                             [o.id]: {
                               rating: Number(e.target.value),
-                              text: v[o.id]?.text || "",
+                              text: v[o.id]?.text ?? existingReview?.text ?? "",
                             },
                           }))
                         }
@@ -1391,30 +1404,46 @@ function OffersPage() {
                       </select>
                       <input
                         placeholder="Nhận xét giao dịch"
-                        value={review[o.id]?.text || ""}
+                        disabled={!reviewEditable || busy === o.id}
+                        value={review[o.id]?.text ?? existingReview?.text ?? ""}
                         onChange={(e) =>
                           setReview((v) => ({
                             ...v,
                             [o.id]: {
-                              rating: v[o.id]?.rating || 5,
+                              rating:
+                                v[o.id]?.rating ?? existingReview?.rating ?? 5,
                               text: e.target.value,
                             },
                           }))
                         }
                       />
-                      <button
-                        onClick={() =>
-                          act(o.id, () =>
-                            saveReview(
-                              o,
-                              review[o.id]?.rating || 5,
-                              review[o.id]?.text || "",
-                            ),
-                          )
-                        }
-                      >
-                        Gửi đánh giá
-                      </button>
+                      {reviewEditable ? (
+                        <button
+                          disabled={busy === o.id}
+                          onClick={() =>
+                            act(o.id, async () => {
+                              await saveReview(
+                                o,
+                                review[o.id]?.rating ??
+                                  existingReview?.rating ??
+                                  5,
+                                review[o.id]?.text ??
+                                  existingReview?.text ??
+                                  "",
+                              );
+                              setNotice(
+                                existingReview
+                                  ? "Đã cập nhật đánh giá."
+                                  : "Đã gửi đánh giá thành công.",
+                              );
+                            })
+                          }
+                        >
+                          {existingReview ? "Cập nhật" : "Gửi đánh giá"}
+                        </button>
+                      ) : (
+                        <small>Đã hết thời gian chỉnh sửa đánh giá.</small>
+                      )}
                     </div>
                   )}
                 </div>

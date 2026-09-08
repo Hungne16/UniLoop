@@ -15,7 +15,6 @@ import {
   type Member,
   type Offer,
   type Report,
-  type Review,
 } from "./domain";
 
 const requireUser = () => {
@@ -361,25 +360,35 @@ export async function confirmOffer(offerId: string) {
     }
   });
 }
-export async function saveReview(
-  offer: Offer,
-  rating: number,
-  text: string,
-  existing?: Review,
-) {
+export async function saveReview(offer: Offer, rating: number, text: string) {
   const uid = requireUser(),
-    revieweeId = uid === offer.buyerId ? offer.sellerId : offer.buyerId;
+    revieweeId = uid === offer.buyerId ? offer.sellerId : offer.buyerId,
+    target = doc(db, "reviews", offer.id + "_" + uid);
   if (!Number.isInteger(rating) || rating < 1 || rating > 5 || !text.trim())
     throw new Error("Chọn số sao và viết nhận xét.");
-  await setDoc(doc(db, "reviews", offer.id + "_" + uid), {
-    offerId: offer.id,
-    reviewerId: uid,
-    revieweeId,
-    rating,
-    text: text.trim().slice(0, 2000),
-    reply: existing?.reply ?? "",
-    createdAt: existing?.createdAt ?? Date.now(),
-    updatedAt: Date.now(),
+
+  await runTransaction(db, async (tx) => {
+    const snapshot = await tx.get(target),
+      existing = snapshot.exists() ? snapshot.data() : null,
+      timestamp = Date.now();
+
+    if (
+      existing &&
+      typeof existing.createdAt === "number" &&
+      timestamp >= existing.createdAt + DAY
+    )
+      throw new Error("Đánh giá chỉ có thể chỉnh sửa trong vòng 24 giờ.");
+
+    tx.set(target, {
+      offerId: offer.id,
+      reviewerId: uid,
+      revieweeId,
+      rating,
+      text: text.trim().slice(0, 2000),
+      reply: existing?.reply ?? "",
+      createdAt: existing?.createdAt ?? timestamp,
+      updatedAt: timestamp,
+    });
   });
 }
 export async function reportTarget(
