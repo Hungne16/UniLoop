@@ -46,6 +46,13 @@ textarea {
 button {
   color: inherit;
   cursor: pointer;
+  transition:
+    transform 0.16s ease,
+    filter 0.16s ease,
+    box-shadow 0.16s ease;
+}
+button:active:not(:disabled) {
+  transform: translateY(1px) scale(0.97);
 }
 button:disabled {
   cursor: not-allowed;
@@ -68,6 +75,39 @@ svg {
 ::selection {
   color: var(--navy);
   background: var(--lime);
+}
+.app-toast {
+  position: fixed;
+  z-index: 1000;
+  top: 18px;
+  left: 50%;
+  width: min(calc(100% - 28px), 460px);
+  min-height: 52px;
+  padding: 11px 15px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 14px;
+  color: white;
+  background: #08766a;
+  box-shadow: 0 18px 50px rgba(6, 44, 70, 0.24);
+  transform: translateX(-50%);
+  animation: toast-in 0.34s cubic-bezier(0.2, 0.9, 0.25, 1.15);
+  font-size: 12px;
+  font-weight: 700;
+}
+.app-toast.error {
+  background: #9e3838;
+}
+.app-toast.info {
+  background: var(--navy);
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -16px) scale(0.96);
+  }
 }
 .container {
   width: min(calc(100% - 48px), var(--container));
@@ -1705,6 +1745,168 @@ h2 {
   background: var(--navy);
   font-weight: 800;
 }
+.avatar-btn {
+  overflow: hidden;
+  padding: 0;
+}
+.avatar-btn .member-avatar {
+  width: 100%;
+  height: 100%;
+  font-size: 11px;
+}
+.avatar-editor > div,
+.payment-qr-editor > div {
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  border: 1px dashed #b9cfca;
+  border-radius: 13px;
+  background: #f7faf8;
+}
+.avatar-editor > div > span,
+.payment-qr-editor > div > span {
+  flex: 1;
+  display: grid;
+}
+.avatar-editor input,
+.payment-qr-editor input {
+  width: min(100%, 220px);
+  min-height: 40px;
+  padding: 7px;
+  background: white;
+}
+.payment-qr-editor img,
+.qr-placeholder {
+  width: 82px;
+  height: 82px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  object-fit: contain;
+  background: white;
+  color: var(--muted);
+  font-weight: 800;
+}
+.swap-picker {
+  margin: 16px 0;
+}
+.swap-picker > p {
+  margin: 2px 0 10px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.swap-picker > div {
+  max-height: 280px;
+  overflow-y: auto;
+  display: grid;
+  gap: 8px;
+}
+.swap-picker > div > button {
+  min-height: 72px;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: white;
+}
+.swap-picker > div > button.selected {
+  border-color: var(--teal);
+  background: var(--teal-soft);
+  box-shadow: 0 0 0 2px rgba(19, 170, 152, 0.12);
+}
+.swap-picker img {
+  width: 56px;
+  height: 54px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+.swap-picker button > span {
+  flex: 1;
+  display: grid;
+}
+.swap-picker button small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.swap-picker button svg {
+  color: var(--teal);
+}
+.exchange-offer-card {
+  width: 100%;
+  margin-top: 11px;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  border: 1px solid #bfe0d8;
+  border-radius: 12px;
+  background: #eefaf6;
+}
+.exchange-offer-card > img {
+  width: 64px;
+  height: 58px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+.exchange-offer-card > div {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+}
+.exchange-offer-card small {
+  color: var(--teal);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+.exchange-offer-card span {
+  color: var(--muted);
+  font-size: 10px;
+}
+.exchange-offer-card button {
+  min-height: 35px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  border-radius: 8px;
+  color: white;
+  background: var(--navy);
+  font-size: 10px;
+  font-weight: 800;
+}
+.offer-payment-qr {
+  width: 100%;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #e7dcad;
+  border-radius: 11px;
+  background: #fffbea;
+}
+.offer-payment-qr img {
+  width: 92px;
+  height: 92px;
+  border-radius: 8px;
+  object-fit: contain;
+  background: white;
+}
+.offer-payment-qr > div {
+  display: grid;
+}
+.offer-payment-qr span {
+  max-width: 250px;
+  color: var(--muted);
+  font-size: 10px;
+}
 .profile-hero {
   display: flex;
   align-items: center;
@@ -2307,6 +2509,17 @@ footer {
   }
   .transaction-list article {
     align-items: flex-start;
+  }
+  .avatar-editor > div,
+  .payment-qr-editor > div,
+  .exchange-offer-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .avatar-editor input,
+  .payment-qr-editor input,
+  .exchange-offer-card button {
+    width: 100%;
   }
   .profile-metrics {
     width: 100%;

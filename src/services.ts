@@ -37,7 +37,12 @@ export type ListingInput = Pick<
   | "defects"
   | "negotiable"
 >;
-async function compressImage(file: File) {
+export async function prepareImage(file: File) {
+  if (
+    !["image/jpeg", "image/png", "image/webp"].includes(file.type) ||
+    file.size > 5 * 1024 * 1024
+  )
+    throw new Error("Chọn ảnh JPG, PNG hoặc WebP dưới 5 MB.");
   const bitmap = await createImageBitmap(file);
   let width = bitmap.width,
     height = bitmap.height,
@@ -81,8 +86,17 @@ export async function uploadImages(files: File[]) {
   )
     throw new Error("Tối đa 5 ảnh JPG, PNG hoặc WebP, mỗi ảnh dưới 5 MB.");
   const urls = [];
-  for (const file of files) urls.push(await compressImage(file));
+  for (const file of files) urls.push(await prepareImage(file));
   return { paths: files.map(() => ""), urls };
+}
+export async function savePaymentQR(qr: string) {
+  const uid = requireUser();
+  if (!qr.startsWith("data:image/webp") || qr.length > 180000)
+    throw new Error("QR thanh toán không hợp lệ hoặc quá lớn.");
+  await setDoc(doc(db, "paymentProfiles", uid), {
+    qr,
+    updatedAt: Date.now(),
+  });
 }
 export async function cleanupImages(paths: string[]) {
   await Promise.allSettled(
@@ -265,7 +279,11 @@ export async function acceptOffer(offerId: string) {
     const listing = await tx.get(listingRef(offer.listingId)),
       swap = offer.exchangeListingId
         ? await tx.get(listingRef(offer.exchangeListingId))
-        : null;
+        : null,
+      payment =
+        uid === offer.sellerId && !offer.exchangeListingId
+          ? await tx.get(doc(db, "paymentProfiles", uid))
+          : null;
     if (
       !listing.exists() ||
       !available(listing.data() as Listing) ||
@@ -280,16 +298,29 @@ export async function acceptOffer(offerId: string) {
     tx.update(listing.ref, { status: "reserved", chosenOfferId: offerId });
     if (swap)
       tx.update(swap.ref, { status: "reserved", chosenOfferId: offerId });
+    if (payment?.exists() && payment.data().qr)
+      tx.set(doc(db, "offers", offerId, "payment", "details"), {
+        qr: payment.data().qr,
+        updatedAt: Date.now(),
+      });
   });
 }
 export async function counterOffer(offer: Offer, price: number) {
-  requireUser();
+  const uid = requireUser();
   if (!Number.isFinite(price) || price <= 0)
     throw new Error("Nhập giá hợp lệ.");
-  await updateDoc(doc(db, "offers", offer.id), {
-    status: "countered",
-    counterPrice: price,
-    updatedAt: Date.now(),
+  await runTransaction(db, async (tx) => {
+    const payment = await tx.get(doc(db, "paymentProfiles", uid));
+    tx.update(doc(db, "offers", offer.id), {
+      status: "countered",
+      counterPrice: price,
+      updatedAt: Date.now(),
+    });
+    if (!offer.exchangeListingId && payment.exists() && payment.data().qr)
+      tx.set(doc(db, "offers", offer.id, "payment", "details"), {
+        qr: payment.data().qr,
+        updatedAt: Date.now(),
+      });
   });
 }
 export async function rejectOffer(offer: Offer) {

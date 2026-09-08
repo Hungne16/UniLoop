@@ -21,12 +21,18 @@ service cloud.firestore {
    allow read:if admin() || (signed() && request.auth.uid == uid);
    allow create,update:if admin() && uid != request.auth.uid && request.resource.data.keys().hasOnly(['status','reason','updatedAt']) && request.resource.data.status in ['active','restricted'] && text(request.resource.data.reason,1000);
   }
+  match /paymentProfiles/{uid}{
+   allow read:if own(uid);
+   allow create,update:if own(uid)
+    && request.resource.data.keys().hasOnly(['qr','updatedAt'])
+    && image(request.resource.data.qr) && request.resource.data.qr.size()>0;
+  }
   match /members/{uid}{
    allow read:if true;
    allow create,update:if own(uid) && request.resource.data.keys().hasOnly(['name','university','major','cohort','bio','photoURL','socialURL','updatedAt'])
     && text(request.resource.data.name,100) && request.resource.data.name.size()>0
     && text(request.resource.data.university,100) && text(request.resource.data.major,100) && text(request.resource.data.cohort,30)
-    && text(request.resource.data.bio,1000) && text(request.resource.data.photoURL,2000) && text(request.resource.data.socialURL,2000);
+    && text(request.resource.data.bio,1000) && image(request.resource.data.photoURL) && text(request.resource.data.socialURL,2000);
    match /favorites/{id}{allow read,delete:if own(uid);allow create,update:if own(uid) && request.resource.data.keys().hasOnly(['createdAt']);}
    match /slots/{slot}{
     allow read:if own(uid);
@@ -116,6 +122,13 @@ service cloud.firestore {
      && request.resource.data.senderId==request.auth.uid
      && text(request.resource.data.text,2000) && request.resource.data.text.size()>0
      && recent(request.resource.data.createdAt);
+   }
+   match /payment/{paymentId}{
+    allow read:if party(get(op(id)).data);
+    allow create,update:if active() && request.auth.uid==get(op(id)).data.sellerId
+     && paymentId=='details'
+     && request.resource.data.keys().hasOnly(['qr','updatedAt'])
+     && image(request.resource.data.qr) && request.resource.data.qr.size()>0;
    }
   }
   match /reviews/{id}{

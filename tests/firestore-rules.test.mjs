@@ -196,6 +196,11 @@ test("seller can atomically accept, outsider cannot confirm", async () => {
   );
   const seller = db("seller"),
     batch = writeBatch(seller);
+  const qr = "data:image/webp;base64,UklGRg==";
+  await setDoc(doc(seller, "paymentProfiles/seller"), {
+    qr,
+    updatedAt: now(),
+  });
   batch.update(doc(seller, "offers/o1"), {
     status: "accepted",
     price: 90000,
@@ -204,6 +209,10 @@ test("seller can atomically accept, outsider cannot confirm", async () => {
   batch.update(doc(seller, "listings/l1"), {
     status: "reserved",
     chosenOfferId: "o1",
+  });
+  batch.set(doc(seller, "offers/o1/payment/details"), {
+    qr,
+    updatedAt: now(),
   });
   await assertSucceeds(batch.commit());
   await assertSucceeds(
@@ -279,6 +288,38 @@ test("only offer participants can read and send chat messages", async () => {
   );
   await assertFails(
     setDoc(doc(db("seller"), "offers/o1/messages/m2"), message),
+  );
+});
+test("member can update avatar and seller can privately share payment QR", async () => {
+  await seed();
+  await env.withSecurityRulesDisabled((c) =>
+    setDoc(doc(c.firestore(), "offers/o1"), offer()),
+  );
+  const qr = "data:image/webp;base64,UklGRg==";
+  await assertSucceeds(
+    updateDoc(doc(db("seller"), "members/seller"), {
+      photoURL: qr,
+      updatedAt: now(),
+    }),
+  );
+  await assertSucceeds(
+    setDoc(doc(db("seller"), "paymentProfiles/seller"), {
+      qr,
+      updatedAt: now(),
+    }),
+  );
+  await assertFails(getDoc(doc(db("outsider"), "paymentProfiles/seller")));
+  await assertSucceeds(
+    setDoc(doc(db("seller"), "offers/o1/payment/details"), {
+      qr,
+      updatedAt: now(),
+    }),
+  );
+  await assertSucceeds(
+    getDoc(doc(db("buyer"), "offers/o1/payment/details")),
+  );
+  await assertFails(
+    getDoc(doc(db("outsider"), "offers/o1/payment/details")),
   );
 });
 test("admin document grants moderation but remains unwritable by client", async () => {

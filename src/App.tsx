@@ -42,6 +42,7 @@ import {
   addDoc,
   collection,
   doc,
+  getDoc,
   limitToLast,
   onSnapshot,
   orderBy,
@@ -58,13 +59,16 @@ import {
   confirmOffer,
   counterOffer,
   removeListing,
+  rejectOffer,
   reportTarget,
   saveListing,
   saveMember,
+  savePaymentQR,
   saveReview,
   scheduleMeeting,
   sendChatMessage,
   sendOffer,
+  prepareImage,
   type ListingInput,
 } from "./services";
 import {
@@ -168,6 +172,37 @@ function Avatar({ member, userName }: { member?: Member; userName?: string }) {
   );
 }
 
+type ToastDetail = { message: string; tone?: "success" | "error" | "info" };
+const toast = (message: string, tone: ToastDetail["tone"] = "success") =>
+  dispatchEvent(
+    new CustomEvent<ToastDetail>("uniloop:toast", {
+      detail: { message, tone },
+    }),
+  );
+function ToastHost() {
+  const [item, setItem] = useState<(ToastDetail & { id: number }) | null>(null);
+  useEffect(() => {
+    let timer = 0;
+    const receive = (event: Event) => {
+      const detail = (event as CustomEvent<ToastDetail>).detail;
+      setItem({ ...detail, id: Date.now() });
+      clearTimeout(timer);
+      timer = window.setTimeout(() => setItem(null), 3200);
+    };
+    addEventListener("uniloop:toast", receive);
+    return () => {
+      removeEventListener("uniloop:toast", receive);
+      clearTimeout(timer);
+    };
+  }, []);
+  return item ? (
+    <div className={`app-toast ${item.tone || "success"}`} role="status">
+      {item.tone === "error" ? <X /> : <CheckCircle2 />}
+      <span>{item.message}</span>
+    </div>
+  ) : null;
+}
+
 function Header({
   page,
   go,
@@ -179,7 +214,8 @@ function Header({
   term: string;
   setTerm: (s: string) => void;
 }) {
-  const { user, admin, offers } = useBackend(),
+  const { user, admin, offers, members } = useBackend(),
+    me = members.find((member) => member.id === user?.uid),
     [open, setOpen] = useState(false);
   const alert = offers.some((o) =>
     ["pending", "countered", "accepted"].includes(o.status),
@@ -234,7 +270,7 @@ function Header({
                 className="avatar-btn"
                 onClick={() => go(admin ? "admin" : "profile")}
               >
-                {initials(user.displayName || user.email || "U")}
+                <Avatar member={me} userName={user.displayName || user.email || "U"} />
               </button>
               <button className="post-btn" onClick={() => go("create")}>
                 <Plus /> Đăng tin
@@ -278,7 +314,9 @@ function Card({ item, open }: { item: Listing; open: (x: Listing) => void }) {
           className={"heart-btn " + (isSaved ? "saved" : "")}
           onClick={(e) => {
             e.stopPropagation();
-            toggleSaved(item.id).catch(() => {});
+            toggleSaved(item.id)
+              .then(() => toast(isSaved ? "Đã bỏ khỏi danh sách lưu." : "Đã lưu sản phẩm."))
+              .catch((reason) => toast(errorMessage(reason), "error"));
           }}
           aria-label={isSaved ? "Bỏ lưu" : "Lưu"}
         >
@@ -615,7 +653,7 @@ function Detail({
   go: (p: Page) => void;
   openMember: (id: string) => void;
 }) {
-  const { members, badges, user, saved, toggleSaved } = useBackend(),
+  const { members, badges, user, saved, toggleSaved, ownListings } = useBackend(),
     seller = members.find((x) => x.id === item.ownerId),
     [modal, setModal] = useState(false),
     [price, setPrice] = useState(item.price),
@@ -633,8 +671,10 @@ function Detail({
     try {
       await sendOffer(item, price, message, swap);
       setNotice("Đã gửi đề nghị. Người đăng có 24 giờ để phản hồi.");
+      toast("Đã gửi đề nghị cho người bán.");
     } catch (e) {
       setError(errorMessage(e));
+      toast(errorMessage(e), "error");
     } finally {
       setBusy(false);
     }
@@ -714,8 +754,10 @@ function Detail({
               try {
                 await reportTarget("listing", item.id, reason, description);
                 setNotice("Đã gửi báo cáo tới quản trị viên.");
+                toast("Đã gửi báo cáo tới quản trị viên.");
               } catch (e) {
                 setError(errorMessage(e));
+                toast(errorMessage(e), "error");
               }
             }}
           >
@@ -812,13 +854,44 @@ function Detail({
                   </label>
                 )}
                 {item.type.includes("exchange") && (
-                  <label>
-                    ID tin của bạn để đổi
-                    <input
-                      value={swap}
-                      onChange={(e) => setSwap(e.target.value.trim())}
-                    />
-                  </label>
+                  <div className="swap-picker">
+                    <strong>Món bạn muốn dùng để đổi</strong>
+                    <p>Chọn một tin đang hoạt động của bạn.</p>
+                    <div>
+                      {ownListings
+                        .filter(
+                          (listing) =>
+                            available(listing) && listing.id !== item.id,
+                        )
+                        .map((listing) => (
+                          <button
+                            type="button"
+                            key={listing.id}
+                            className={swap === listing.id ? "selected" : ""}
+                            onClick={() => {
+                              setSwap(listing.id);
+                              toast(`Đã chọn ${listing.title} để trao đổi.`, "info");
+                            }}
+                          >
+                            <img src={listing.images[0]} alt="" />
+                            <span>
+                              <b>{listing.title}</b>
+                              <small>
+                                {listing.condition} · {money(listing.price)}
+                              </small>
+                            </span>
+                            {swap === listing.id && <CheckCircle2 />}
+                          </button>
+                        ))}
+                    </div>
+                    {!ownListings.some(
+                      (listing) => available(listing) && listing.id !== item.id,
+                    ) && (
+                      <small>
+                        Bạn chưa có tin đang hoạt động để dùng trao đổi.
+                      </small>
+                    )}
+                  </div>
                 )}
                 <label>
                   Lời nhắn
@@ -872,8 +945,16 @@ function ListingEditor({
     ),
     [files, setFiles] = useState<File[]>([]),
     [imageLinks, setImageLinks] = useState(""),
+    [paymentQR, setPaymentQR] = useState(""),
+    [qrBusy, setQrBusy] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  useEffect(() => {
+    if (!auth.currentUser) return;
+    getDoc(doc(db, "paymentProfiles", auth.currentUser.uid))
+      .then((snapshot) => setPaymentQR(snapshot.data()?.qr || ""))
+      .catch(() => {});
+  }, []);
   const set = <K extends keyof ListingInput>(key: K, value: ListingInput[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
   async function submit(
@@ -884,6 +965,8 @@ function ListingEditor({
     setBusy(true);
     setError("");
     try {
+      if (form.type.includes("sale") && paymentQR)
+        await savePaymentQR(paymentQR);
       await saveListing(
         form,
         files,
@@ -891,9 +974,11 @@ function ListingEditor({
         editing || undefined,
         imageLinks.split(/\r?\n/),
       );
+      toast(editing ? "Đã cập nhật tin đăng." : status === "draft" ? "Đã lưu bản nháp." : "Đã xuất bản tin đăng.");
       onDone();
     } catch (err) {
       setError(errorMessage(err));
+      toast(errorMessage(err), "error");
     } finally {
       setBusy(false);
     }
@@ -948,6 +1033,44 @@ function ListingEditor({
               Hiển thị: {money(form.type === "free" ? 0 : form.price)}
             </small>
           </label>
+          {form.type.includes("sale") && (
+            <label className="full payment-qr-editor">
+              QR thanh toán của người bán (không hiển thị công khai)
+              <div>
+                {paymentQR ? (
+                  <img src={paymentQR} alt="QR thanh toán đã chọn" />
+                ) : (
+                  <span className="qr-placeholder">QR</span>
+                )}
+                <span>
+                  <b>{qrBusy ? "Đang tối ưu QR…" : "Tải ảnh QR lên"}</b>
+                  <small>
+                    QR chỉ được chia sẻ với buyer sau khi đề nghị được chấp nhận.
+                  </small>
+                </span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  disabled={qrBusy}
+                  onChange={async (event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    setQrBusy(true);
+                    setError("");
+                    try {
+                      setPaymentQR(await prepareImage(file));
+                      toast("Đã nhận QR thanh toán.", "info");
+                    } catch (reason) {
+                      setError(errorMessage(reason));
+                      toast(errorMessage(reason), "error");
+                    } finally {
+                      setQrBusy(false);
+                    }
+                  }}
+                />
+              </div>
+            </label>
+          )}
           <label>
             Danh mục
             <select
@@ -1015,7 +1138,12 @@ function ListingEditor({
               type="file"
               accept="image/jpeg,image/png,image/webp"
               multiple
-              onChange={(e) => setFiles(Array.from(e.target.files || []))}
+              onChange={(e) => {
+                const selectedFiles = Array.from(e.target.files || []);
+                setFiles(selectedFiles);
+                if (selectedFiles.length)
+                  toast(`Đã nhận ${selectedFiles.length} ảnh sản phẩm.`, "info");
+              }}
             />
             <small>
               {editing
@@ -1288,7 +1416,13 @@ function AuthPage({
   );
 }
 
-function OffersPage({ openMember }: { openMember: (id: string) => void }) {
+function OffersPage({
+  openMember,
+  openListing,
+}: {
+  openMember: (id: string) => void;
+  openListing: (listing: Listing) => void;
+}) {
   const { offers, user, reviews, members, products, ownListings } =
       useBackend(),
     [busy, setBusy] = useState(""),
@@ -1299,14 +1433,23 @@ function OffersPage({ openMember }: { openMember: (id: string) => void }) {
     [review, setReview] = useState<
       Record<string, { rating: number; text: string }>
     >({});
-  async function act(id: string, fn: () => Promise<unknown>) {
+  async function act(
+    id: string,
+    fn: () => Promise<unknown>,
+    success?: string,
+  ) {
     setBusy(id);
     setError("");
     setNotice("");
     try {
       await fn();
+      if (success) {
+        setNotice(success);
+        toast(success);
+      }
     } catch (e) {
       setError(errorMessage(e));
+      toast(errorMessage(e), "error");
     } finally {
       setBusy("");
     }
@@ -1333,6 +1476,9 @@ function OffersPage({ openMember }: { openMember: (id: string) => void }) {
               counterpart = members.find((item) => item.id === counterpartId),
               exchangeListing = [...products, ...ownListings].find(
                 (item) => item.id === o.exchangeListingId,
+              ),
+              originalListing = [...products, ...ownListings].find(
+                (item) => item.id === o.listingId,
               ),
               existingReview = reviews.find(
                 (item) => item.offerId === o.id && item.reviewerId === user.uid,
@@ -1386,9 +1532,27 @@ function OffersPage({ openMember }: { openMember: (id: string) => void }) {
                     </p>
                   )}
                   {o.exchangeListingId && (
-                    <p className="exchange-note">
-                      <Recycle size={15} /> Đổi bằng: {exchangeListing?.title || "Món đồ trao đổi"}
-                    </p>
+                    <div className="exchange-offer-card">
+                      {exchangeListing?.images[0] && (
+                        <img src={exchangeListing.images[0]} alt="" />
+                      )}
+                      <div>
+                        <small>MÓN ĐƯỢC ĐỀ XUẤT TRAO ĐỔI</small>
+                        <strong>
+                          {exchangeListing?.title || "Món đồ trao đổi"}
+                        </strong>
+                        <span>
+                          {exchangeListing
+                            ? `${exchangeListing.condition} · ${money(exchangeListing.price)}`
+                            : "Mở tin để xem thông tin chi tiết"}
+                        </span>
+                      </div>
+                      {exchangeListing && (
+                        <button onClick={() => openListing(exchangeListing)}>
+                          Xem món đồ <ArrowRight size={15} />
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
                 <div className="offer-actions">
@@ -1404,35 +1568,71 @@ function OffersPage({ openMember }: { openMember: (id: string) => void }) {
                   {incoming && o.status === "pending" && (
                     <>
                       <button
-                        onClick={() => act(o.id, () => acceptOffer(o.id))}
+                        onClick={() =>
+                          act(
+                            o.id,
+                            () => acceptOffer(o.id),
+                            o.exchangeListingId
+                              ? "Đã chấp nhận trao đổi món đồ."
+                              : "Đã chấp nhận đề nghị.",
+                          )
+                        }
                       >
                         Chấp nhận
                       </button>
-                      <button
-                        onClick={() => {
-                          const p = Number(prompt("Giá đề xuất lại (đ):"));
-                          if (p) act(o.id, () => counterOffer(o, p));
-                        }}
-                      >
-                        Đề xuất giá
-                      </button>
+                      {originalListing?.type !== "exchange" &&
+                        !o.exchangeListingId && (
+                        <button
+                          onClick={() => {
+                            const p = Number(prompt("Giá đề xuất lại (đ):"));
+                            if (p)
+                              act(
+                                o.id,
+                                () => counterOffer(o, p),
+                                "Đã gửi giá đề xuất mới.",
+                              );
+                          }}
+                        >
+                          Đề xuất giá
+                        </button>
+                      )}
                       <button
                         className="danger"
-                        onClick={() => act(o.id, () => cancelOffer(o.id))}
+                        onClick={() =>
+                          act(
+                            o.id,
+                            () => rejectOffer(o),
+                            "Đã từ chối đề nghị.",
+                          )
+                        }
                       >
                         Từ chối
                       </button>
                     </>
                   )}
                   {!incoming && o.status === "countered" && (
-                    <button onClick={() => act(o.id, () => acceptOffer(o.id))}>
+                    <button
+                      onClick={() =>
+                        act(
+                          o.id,
+                          () => acceptOffer(o.id),
+                          "Đã chấp nhận giá mới.",
+                        )
+                      }
+                    >
                       Chấp nhận giá mới
                     </button>
                   )}
                   {["pending", "countered"].includes(o.status) && (
                     <button
                       className="secondary"
-                      onClick={() => act(o.id, () => cancelOffer(o.id))}
+                      onClick={() =>
+                        act(
+                          o.id,
+                          () => cancelOffer(o.id),
+                          "Đã hủy đề nghị.",
+                        )
+                      }
                     >
                       Hủy
                     </button>
@@ -1447,7 +1647,13 @@ function OffersPage({ openMember }: { openMember: (id: string) => void }) {
                       </button>
                       {canConfirm && (
                         <button
-                          onClick={() => act(o.id, () => confirmOffer(o.id))}
+                          onClick={() =>
+                            act(
+                              o.id,
+                              () => confirmOffer(o.id),
+                              "Đã ghi nhận xác nhận của bạn.",
+                            )
+                          }
                         >
                           Đã trao nhận
                         </button>
@@ -1462,6 +1668,9 @@ function OffersPage({ openMember }: { openMember: (id: string) => void }) {
                         {meetingLabel(o.meetingTime)}
                       </span>
                     </div>
+                  )}
+                  {["accepted", "completed"].includes(o.status) && (
+                    <OfferPaymentQR offerId={o.id} seller={incoming} />
                   )}
                   {o.status === "completed" && (
                     <div className="inline-review">
@@ -1521,6 +1730,11 @@ function OffersPage({ openMember }: { openMember: (id: string) => void }) {
                                   ? "Đã cập nhật đánh giá."
                                   : "Đã gửi đánh giá thành công.",
                               );
+                              toast(
+                                existingReview
+                                  ? "Đã cập nhật đánh giá."
+                                  : "Đã gửi đánh giá thành công.",
+                              );
                             })
                           }
                         >
@@ -1561,6 +1775,7 @@ function OffersPage({ openMember }: { openMember: (id: string) => void }) {
               await scheduleMeeting(meetingOffer, place, time);
               setMeetingOffer(null);
               setNotice("Đã cập nhật lịch hẹn cho hai bên.");
+              toast("Đã cập nhật lịch hẹn cho hai bên.");
             })
           }
         />
@@ -1649,6 +1864,37 @@ function MeetingModal({
   );
 }
 
+function OfferPaymentQR({
+  offerId,
+  seller,
+}: {
+  offerId: string;
+  seller: boolean;
+}) {
+  const [qr, setQR] = useState("");
+  useEffect(
+    () =>
+      onSnapshot(doc(db, "offers", offerId, "payment", "details"), (snapshot) =>
+        setQR(snapshot.data()?.qr || ""),
+      ),
+    [offerId],
+  );
+  if (!qr) return null;
+  return (
+    <div className="offer-payment-qr">
+      <img src={qr} alt="QR thanh toán của người bán" />
+      <div>
+        <strong>{seller ? "QR đã chia sẻ" : "QR thanh toán"}</strong>
+        <span>
+          {seller
+            ? "Chỉ bên mua trong giao dịch này có thể xem."
+            : "Kiểm tra đúng người nhận trước khi thanh toán."}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function OfferChat({
   offer,
   userId,
@@ -1697,8 +1943,10 @@ function OfferChat({
     try {
       await sendChatMessage(offer.id, text);
       setText("");
+      toast("Tin nhắn đã được gửi.");
     } catch (reason) {
       setError(errorMessage(reason));
+      toast(errorMessage(reason), "error");
     } finally {
       setBusy(false);
     }
@@ -1959,6 +2207,7 @@ function ProfilePage({ editListing }: { editListing: (x: Listing) => void }) {
       photoURL: me?.photoURL || "",
       socialURL: me?.socialURL || "",
     }),
+    [avatarBusy, setAvatarBusy] = useState(false),
     [notice, setNotice] = useState(""),
     [error, setError] = useState("");
   useEffect(() => {
@@ -1982,9 +2231,14 @@ function ProfilePage({ editListing }: { editListing: (x: Listing) => void }) {
     e.preventDefault();
     try {
       await saveMember(form);
+      await updateProfile(user, { displayName: form.name.trim() }).catch(
+        () => undefined,
+      );
       setNotice("Đã lưu hồ sơ.");
+      toast("Đã cập nhật hồ sơ và tên hiển thị.");
     } catch (err) {
       setError(errorMessage(err));
+      toast(errorMessage(err), "error");
     }
   };
   const verify = async (e: FormEvent<HTMLFormElement>) => {
@@ -2002,8 +2256,21 @@ function ProfilePage({ editListing }: { editListing: (x: Listing) => void }) {
       setNotice(
         "Đã gửi yêu cầu. Quản trị viên sẽ kiểm tra bằng chứng sở hữu email trường.",
       );
+      toast("Đã gửi yêu cầu xác minh sinh viên.");
     } catch (err) {
       setError(errorMessage(err));
+      toast(errorMessage(err), "error");
+    }
+  };
+  const profileAction = async (work: () => Promise<unknown>, message: string) => {
+    setError("");
+    try {
+      await work();
+      setNotice(message);
+      toast(message);
+    } catch (reason) {
+      setError(errorMessage(reason));
+      toast(errorMessage(reason), "error");
     }
   };
   return (
@@ -2040,6 +2307,37 @@ function ProfilePage({ editListing }: { editListing: (x: Listing) => void }) {
           <form className="wizard" onSubmit={save}>
             <h2>Thông tin cá nhân</h2>
             <div className="form-grid">
+              <label className="full avatar-editor">
+                Ảnh đại diện
+                <div>
+                  <Avatar member={{ ...(me || form), photoURL: form.photoURL } as Member} userName={form.name} />
+                  <span>
+                    <b>{avatarBusy ? "Đang tối ưu ảnh…" : "Chọn avatar mới"}</b>
+                    <small>JPG, PNG hoặc WebP dưới 5 MB</small>
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    disabled={avatarBusy}
+                    onChange={async (event) => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      setAvatarBusy(true);
+                      setError("");
+                      try {
+                        const photoURL = await prepareImage(file);
+                        setForm((value) => ({ ...value, photoURL }));
+                        toast("Đã nhận ảnh mới. Nhấn Lưu hồ sơ để cập nhật.", "info");
+                      } catch (reason) {
+                        setError(errorMessage(reason));
+                        toast(errorMessage(reason), "error");
+                      } finally {
+                        setAvatarBusy(false);
+                      }
+                    }}
+                  />
+                </div>
+              </label>
               <label>
                 Họ tên
                 <input
@@ -2129,10 +2427,26 @@ function ProfilePage({ editListing }: { editListing: (x: Listing) => void }) {
                 </div>
                 <button onClick={() => editListing(x)}>Sửa</button>
                 {x.status === "active" ? (
-                  <button onClick={() => changeListing(x, "hidden")}>Ẩn</button>
+                  <button
+                    onClick={() =>
+                      void profileAction(
+                        () => changeListing(x, "hidden"),
+                        "Đã ẩn tin đăng.",
+                      )
+                    }
+                  >
+                    Ẩn
+                  </button>
                 ) : (
                   x.status === "hidden" && (
-                    <button onClick={() => changeListing(x, "active")}>
+                    <button
+                      onClick={() =>
+                        void profileAction(
+                          () => changeListing(x, "active"),
+                          "Đã hiển thị lại tin đăng.",
+                        )
+                      }
+                    >
                       Hiện
                     </button>
                   )
@@ -2140,9 +2454,13 @@ function ProfilePage({ editListing }: { editListing: (x: Listing) => void }) {
                 {!["reserved", "sold"].includes(x.status) && (
                   <button
                     className="danger"
-                    onClick={() =>
-                      confirm("Xóa vĩnh viễn tin này?") && removeListing(x)
-                    }
+                    onClick={() => {
+                      if (confirm("Xóa vĩnh viễn tin này?"))
+                        void profileAction(
+                          () => removeListing(x),
+                          "Đã xóa tin đăng.",
+                        );
+                    }}
                   >
                     Xóa
                   </button>
@@ -2514,14 +2832,24 @@ export default function App() {
     );
   if (page === "auth")
     return (
-      <AuthPage
-        initial="login"
-        done={(isAdmin) => go(isAdmin ? "admin" : "home")}
-      />
+      <>
+        <ToastHost />
+        <AuthPage
+          initial="login"
+          done={(isAdmin) => go(isAdmin ? "admin" : "home")}
+        />
+      </>
     );
-  if (page === "admin") return <AdminPage />;
+  if (page === "admin")
+    return (
+      <>
+        <ToastHost />
+        <AdminPage />
+      </>
+    );
   return (
     <div ref={root} className="app page-motion">
+      <ToastHost />
       {backend.restricted && (
         <div className="restriction">
           Tài khoản đang bị hạn chế. Bạn chỉ có thể xem nội dung công khai.
@@ -2562,7 +2890,9 @@ export default function App() {
           />
         </main>
       )}{" "}
-      {page === "offers" && <OffersPage openMember={openMember} />}{" "}
+      {page === "offers" && (
+        <OffersPage openMember={openMember} openListing={open} />
+      )}{" "}
       {page === "member" && selectedMemberId && (
         <PublicProfilePage
           memberId={selectedMemberId}
