@@ -78,7 +78,7 @@ service cloud.firestore {
    allow delete:if own(resource.data.ownerId) && resource.data.status in ['active','draft','hidden'] && !existsAfter(sp(resource.data.ownerId,resource.data.slot));
   }
   match /offers/{id}{
-   allow read:if party(resource.data) || admin();
+   allow read:if admin() || (active() && (resource.data.buyerId == request.auth.uid || resource.data.sellerId == request.auth.uid));
    allow create:if own(request.resource.data.buyerId)
     && request.resource.data.keys().hasOnly(['buyerId','sellerId','listingId','title','exchangeListingId','price','counterPrice','message','status','buyerConfirmed','sellerConfirmed','meetingPlace','meetingTime','createdAt','expiresAt','updatedAt'])
     && request.resource.data.sellerId!=request.auth.uid && request.resource.data.sellerId==get(lp(request.resource.data.listingId)).data.ownerId

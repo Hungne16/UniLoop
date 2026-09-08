@@ -1,7 +1,7 @@
 import test, { after, before, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing'
-import { doc, getDoc, setDoc, updateDoc, writeBatch } from 'firebase/firestore'
+import { collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where, writeBatch } from 'firebase/firestore'
 import { readFileSync } from 'node:fs'
 
 let env
@@ -48,6 +48,13 @@ test('owner can edit a valid listing with an embedded WebP image',async()=>{
  const current=listing('seller','0',{images:['data:image/webp;base64,UklGRg=='],imagePaths:[''],updatedAt:now()})
  await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'listings/l1'),current))
  await assertSucceeds(updateDoc(doc(owner,'listings/l1'),{title:'Giáo trình đã cập nhật',updatedAt:now()}))
+})
+test('buyer and seller can query their offers but an outsider cannot',async()=>{
+ await seed()
+ await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'offers/o1'),offer()))
+ await assertSucceeds(getDocs(query(collection(db('buyer'),'offers'),where('buyerId','==','buyer'))))
+ await assertSucceeds(getDocs(query(collection(db('seller'),'offers'),where('sellerId','==','seller'))))
+ await assertFails(getDocs(query(collection(db('outsider'),'offers'),where('buyerId','==','buyer'))))
 })
 test('seller can atomically accept, outsider cannot confirm',async()=>{
  await seed()
