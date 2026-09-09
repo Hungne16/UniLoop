@@ -24,6 +24,9 @@ import {
   ShieldCheck,
   Sparkles,
   Star,
+  Moon,
+  Sun,
+  Trash2,
   UserRound,
   Users,
   X,
@@ -69,6 +72,7 @@ import {
   savePaymentQR,
   saveWish,
   removeWish,
+  deleteOffer,
   saveReview,
   scheduleMeeting,
   sendChatMessage,
@@ -248,7 +252,12 @@ function Header({
   const { user, admin, offers, members, notifications, wishes, products } = useBackend(),
     me = members.find((member) => member.id === user?.uid),
     [open, setOpen] = useState(false),
-    [noticeOpen, setNoticeOpen] = useState(false);
+    [noticeOpen, setNoticeOpen] = useState(false),
+    [dark, setDark] = useState(() => localStorage.getItem("uniloop-theme") === "dark");
+  useEffect(() => {
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+    localStorage.setItem("uniloop-theme", dark ? "dark" : "light");
+  }, [dark]);
   const alert = offers.some((o) =>
     ["pending", "countered", "accepted"].includes(o.status),
   ),
@@ -291,6 +300,15 @@ function Header({
           />
         </label>
         <div className="header-actions">
+          <button
+            className="theme-toggle"
+            aria-label={dark ? "Chuyển sang chế độ sáng" : "Chuyển sang chế độ tối"}
+            aria-pressed={dark}
+            onClick={() => setDark((value) => !value)}
+          >
+            <span className="theme-toggle-orbit">{dark ? <Moon /> : <Sun />}</span>
+            <span className="theme-toggle-label">{dark ? "Tối" : "Sáng"}</span>
+          </button>
           <button
             className="icon-btn notification"
             aria-label="Thông báo"
@@ -1009,10 +1027,14 @@ function Detail({
               </span>
             </div>
           </div>
-          <p>{seller?.bio || "Thành viên chưa viết giới thiệu."}</p>
-          <button onClick={() => openMember(item.ownerId)}>
-            Xem hồ sơ <ArrowRight />
-          </button>
+          <div className="seller-card-reveal">
+            <p>{seller?.bio || "Thành viên chưa viết giới thiệu."}</p>
+            <SocialLinks member={seller} />
+            <button onClick={() => openMember(item.ownerId)}>
+              Xem hồ sơ <ArrowRight />
+            </button>
+          </div>
+          <span className="seller-hover-hint">Di chuột để xem thêm</span>
         </aside>
       </div>
       {error && (
@@ -1914,6 +1936,14 @@ function OffersPage({
                   {["accepted", "completed"].includes(o.status) && (
                     <OfferPaymentQR offerId={o.id} seller={incoming} />
                   )}
+                  {["cancelled", "rejected"].includes(o.status) && (
+                    <button className="delete-transaction" disabled={busy === o.id} onClick={() => {
+                      if (!confirm("Xóa giao dịch này khỏi danh sách của cả hai bên? Hành động này không thể hoàn tác.")) return;
+                      act(o.id, () => deleteOffer(o.id), "Đã xóa giao dịch.");
+                    }}>
+                      <Trash2 size={16} /><span>{busy === o.id ? "Đang xóa…" : "Xóa giao dịch"}</span>
+                    </button>
+                  )}
                   {o.status === "completed" && (
                     <div className="inline-review">
                       <select
@@ -2113,7 +2143,7 @@ function OfferPaymentQR({
   offerId: string;
   seller: boolean;
 }) {
-  const [qr, setQR] = useState("");
+  const [qr, setQR] = useState(""), [open, setOpen] = useState(false);
   useEffect(
     () =>
       onSnapshot(doc(db, "offers", offerId, "payment", "details"), (snapshot) =>
@@ -2121,18 +2151,15 @@ function OfferPaymentQR({
       ),
     [offerId],
   );
-  if (!qr) return null;
+  if (!qr) return seller ? null : <p className="payment-unavailable">Người bán chưa tải QR thanh toán.</p>;
   return (
-    <div className="offer-payment-qr">
-      <img src={qr} alt="QR thanh toán của người bán" />
-      <div>
-        <strong>{seller ? "QR đã chia sẻ" : "QR thanh toán"}</strong>
-        <span>
-          {seller
-            ? "Chỉ bên mua trong giao dịch này có thể xem."
-            : "Kiểm tra đúng người nhận trước khi thanh toán."}
-        </span>
-      </div>
+    <div className={`offer-payment ${open ? "open" : ""}`}>
+      <button className="payment-trigger" onClick={() => setOpen((value) => !value)}>
+        <span className="payment-illustration"><span /><i /></span>
+        <span><b>{seller ? "QR đã chia sẻ" : "Thanh toán"}</b><small>{seller ? "Mở để kiểm tra mã QR" : "Mở mã QR của người bán"}</small></span>
+        <ArrowRight size={18} />
+      </button>
+      {open && <div className="offer-payment-qr"><img src={qr} alt="QR thanh toán của người bán" /><div><strong>{seller ? "QR thanh toán đã gửi" : "Quét QR để thanh toán"}</strong><span>Kiểm tra đúng người nhận và món đồ trước khi chuyển khoản.</span></div></div>}
     </div>
   );
 }

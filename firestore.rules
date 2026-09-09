@@ -122,6 +122,7 @@ service cloud.firestore {
      && request.resource.data.status==(request.resource.data.buyerConfirmed && request.resource.data.sellerConfirmed?'completed':'accepted')
      && (request.resource.data.status!='completed' || pair(resource.data,'sold',id)))
    );
+   allow delete:if party(resource.data) && resource.data.status in ['cancelled','rejected'];
    match /messages/{messageId}{
     allow read:if party(get(op(id)).data);
     allow create:if party(get(op(id)).data)

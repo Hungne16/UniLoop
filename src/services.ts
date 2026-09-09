@@ -360,6 +360,16 @@ export async function cancelOffer(offerId: string) {
     }
   });
 }
+export async function deleteOffer(offerId: string) {
+  const uid = requireUser();
+  await runTransaction(db, async (tx) => {
+    const target = doc(db, "offers", offerId), snapshot = await tx.get(target);
+    if (!snapshot.exists()) throw new Error("Giao dịch không còn tồn tại.");
+    const offer = snapshot.data() as Offer;
+    if (!["cancelled", "rejected"].includes(offer.status) || ![offer.buyerId, offer.sellerId].includes(uid)) throw new Error("Chỉ có thể xóa đề nghị đã hủy hoặc đã từ chối.");
+    tx.delete(target);
+  });
+}
 export async function scheduleMeeting(
   offer: Offer,
   place: string,
