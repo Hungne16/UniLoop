@@ -493,13 +493,18 @@ function HomePage({
     schools = new Set(products.map((x) => x.school)).size;
   return (
     <>
-      <section className="hero container">
+      <section className="hero container campus-home-board">
+        <div className="home-card-label">Campus Marketplace</div>
+        <div className="home-board-line">
+          <Logo />
+          <span>Good people · Greener campuses · Brighter tomorrows</span>
+        </div>
         <div className="hero-copy">
-          <span className="eyebrow">MARKETPLACE DÀNH CHO SINH VIÊN</span>
+          <span className="eyebrow">UNILOOP · VÒNG ĐỜI MỚI CHO ĐỒ CŨ</span>
           <h1>
-            Đồ cũ.
+            Đồ cũ đi tiếp.
             <br />
-            <em>Chuyện mới.</em>
+            <em>Kết nối ở lại.</em>
           </h1>
           <p>
             Mua, bán, đổi và trao lại đồ dùng với những người quanh campus. Gặp
@@ -529,12 +534,14 @@ function HomePage({
               </button>
             ))}
           </div>
+          <div className="home-trust-row">
+            <span><b>{live.length}</b><small>Tin đang mở</small></span>
+            <span><b>{members.length}</b><small>Thành viên</small></span>
+            <span><b>{schools}</b><small>Campus kết nối</small></span>
+          </div>
         </div>
         <div className="hero-visual">
-          <div className="board-caption">
-            <span>UNILOOP / CAMPUS CIRCULAR</span>
-            <span>01 — 26</span>
-          </div>
+          <div className="board-caption"><span>YOUR CAMPUS LOOP</span><span>2026</span></div>
           <div className="hero-poster">
             <span className="poster-orbit orbit-one" />
             <span className="poster-orbit orbit-two" />
@@ -567,6 +574,7 @@ function HomePage({
               </span>
             </div>
           </div>
+          <div className="home-tape" />
         </div>
       </section>
       <main className="container home-content">
@@ -581,7 +589,7 @@ function HomePage({
             </button>
           </div>
           <div className="category-grid">
-            {CATEGORIES.slice(0, 6).map((c) => (
+            {CATEGORIES.slice(0, 6).map((c, index) => (
               <button
                 className="category-card"
                 key={c}
@@ -590,7 +598,7 @@ function HomePage({
                   go("explore");
                 }}
               >
-                <span className="category-icon">{c[0]}</span>
+                <span className="category-icon">{["📚", "💻", "👕", "🏠", "✏️", "🏸"][index]}</span>
                 <span>
                   <b>{c}</b>
                   <small>
@@ -630,7 +638,7 @@ function HomePage({
         </section>
         <section className="campus-banner">
           <div>
-            <span className="banner-label">CỘNG ĐỒNG THẬT · DỮ LIỆU THẬT</span>
+            <span className="banner-label">THE UNILOOP PROMISE</span>
             <h2>
               Cùng trường, gần hơn,
               <br />
@@ -644,6 +652,11 @@ function HomePage({
               Đăng món đầu tiên <ArrowRight />
             </button>
           </div>
+          <aside className="campus-promise-note">
+            <Sparkles />
+            <strong>Reduce · Reuse<br />ReUniLoop</strong>
+            <span>Same students,<br />brighter possibilities.</span>
+          </aside>
         </section>
       </main>
     </>
