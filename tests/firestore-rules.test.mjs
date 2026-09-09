@@ -386,6 +386,24 @@ test("admin can reset marketplace data while allowing the account to start fresh
     }),
   );
 });
+test("accounts deleted by the legacy flow regain normal access", async () => {
+  await seed();
+  await env.withSecurityRulesDisabled((c) =>
+    setDoc(doc(c.firestore(), "moderation/seller"), {
+      status: "deleted",
+      reason: "Legacy deletion marker",
+      updatedAt: now(),
+    }),
+  );
+  await assertSucceeds(getDocs(query(collection(db("seller"), "offers"), where("sellerId", "==", "seller"))));
+  await assertSucceeds(
+    setDoc(doc(db("seller"), "members/seller"), {
+      ...member,
+      name: "Thành viên mới",
+      updatedAt: now(),
+    }),
+  );
+});
 test("only admin can send global or private notifications", async () => {
   await seed();
   await env.withSecurityRulesDisabled((c) =>

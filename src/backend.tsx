@@ -57,7 +57,7 @@ export function BackendProvider({children}:{children:ReactNode}){
    onSnapshot(query(collection(db,'offers'),where('buyerId','==',user.uid)),s=>{outgoing=s.docs.map(d=>({...d.data(),id:d.id}) as Offer);merge()},fail),
    onSnapshot(query(collection(db,'reports'),where('reporterId','==',user.uid)),s=>setReports(s.docs.map(d=>({...d.data(),id:d.id}) as Report)),fail),
    onSnapshot(doc(db,'verifications',user.uid),s=>setVerification(s.exists()?{...s.data(),id:s.id} as Verification:null),fail),
-   onSnapshot(doc(db,'moderation',user.uid),s=>setRestricted(s.exists()&&s.data()?.status!=='active'),fail)
+   onSnapshot(doc(db,'moderation',user.uid),s=>setRestricted(s.exists()&&s.data()?.status==='restricted'),fail)
    ,onSnapshot(query(collection(db,'wishes'),where('ownerId','==',user.uid)),s=>setWishes(s.docs.map(d=>({...d.data(),id:d.id}) as Wish)),fail)
    ,onSnapshot(query(collection(db,'notifications'),where('targetType','==','all')),s=>{globalNotices=s.docs.map(d=>({...d.data(),id:d.id}) as Notification);mergeNotices()},fail)
    ,onSnapshot(query(collection(db,'notifications'),where('targetId','==',user.uid)),s=>{personalNotices=s.docs.map(d=>({...d.data(),id:d.id}) as Notification);mergeNotices()},fail)
