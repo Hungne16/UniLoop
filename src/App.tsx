@@ -24,8 +24,6 @@ import {
   ShieldCheck,
   Sparkles,
   Star,
-  Moon,
-  Sun,
   Trash2,
   UserRound,
   Users,
@@ -300,15 +298,14 @@ function Header({
           />
         </label>
         <div className="header-actions">
-          <button
-            className="theme-toggle"
-            aria-label={dark ? "Chuyển sang chế độ sáng" : "Chuyển sang chế độ tối"}
-            aria-pressed={dark}
-            onClick={() => setDark((value) => !value)}
-          >
-            <span className="theme-toggle-orbit">{dark ? <Moon /> : <Sun />}</span>
-            <span className="theme-toggle-label">{dark ? "Tối" : "Sáng"}</span>
-          </button>
+          <label className="theme-switch" aria-label={dark ? "Chuyển sang chế độ sáng" : "Chuyển sang chế độ tối"}>
+            <input className="theme-switch__checkbox" type="checkbox" checked={dark} onChange={() => setDark((value) => !value)} />
+            <span className="theme-switch__container">
+              <span className="theme-switch__clouds" />
+              <span className="theme-switch__stars-container">✦ · ✧ · ✦</span>
+              <span className="theme-switch__circle-container"><span className="theme-switch__sun-moon-container"><span className="theme-switch__moon"><i /><i /><i /></span></span></span>
+            </span>
+          </label>
           <button
             className="icon-btn notification"
             aria-label="Thông báo"
