@@ -274,20 +274,17 @@ function Header({
       <div className="header-inner">
         <Logo go={() => go("home")} />
         <nav className="desktop-nav">
+          <button className={page === "home" ? "active" : ""} onClick={() => go("home")}>Trang chủ</button>
           <button
             className={page === "explore" ? "active" : ""}
             onClick={() => go("explore")}
           >
-            Khám phá
+            Mua bán
           </button>
-          <button
-            className={page === "offers" ? "active" : ""}
-            onClick={() => go("offers")}
-          >
-            Giao dịch
-          </button>
+          <button onClick={() => document.querySelector(".category-section")?.scrollIntoView({ behavior: "smooth" })}>Cộng đồng</button>
+          <button onClick={() => document.querySelector(".campus-banner")?.scrollIntoView({ behavior: "smooth" })}>Hướng dẫn</button>
         </nav>
-        <label className="header-search">
+        <label className="header-search landing-search">
           <Search size={17} />
           <input
             aria-label="Tìm sản phẩm"
@@ -298,32 +295,16 @@ function Header({
           />
         </label>
         <div className="header-actions">
-          <label className="theme-switch" aria-label={dark ? "Chuyển sang chế độ sáng" : "Chuyển sang chế độ tối"}>
-            <input className="theme-switch__checkbox" type="checkbox" checked={dark} onChange={() => setDark((value) => !value)} />
-            <span className="theme-switch__container">
-              <span className="theme-switch__clouds" />
-              <span className="theme-switch__stars-container">✦ · ✧ · ✦</span>
-              <span className="theme-switch__circle-container"><span className="theme-switch__sun-moon-container"><span className="theme-switch__moon"><i /><i /><i /></span></span></span>
-            </span>
-          </label>
-          <button
-            className="icon-btn notification"
-            aria-label="Thông báo"
-            aria-expanded={noticeOpen}
-            onClick={() => setNoticeOpen((value) => !value)}
-          >
-            <Bell />
-            {(alert || notifications.length > 0 || wishMatches.length > 0) && <i />}
-          </button>
-          <button
-            className="icon-btn"
-            aria-label="Đã lưu"
-            onClick={() => go("saved")}
-          >
-            <Heart />
-          </button>
           {user ? (
             <>
+              <label className="theme-switch" aria-label={dark ? "Chuyển sang chế độ sáng" : "Chuyển sang chế độ tối"}>
+                <input className="theme-switch__checkbox" type="checkbox" checked={dark} onChange={() => setDark((value) => !value)} />
+                <span className="theme-switch__container"><span className="theme-switch__clouds" /><span className="theme-switch__stars-container">✦ · ✧ · ✦</span><span className="theme-switch__circle-container"><span className="theme-switch__sun-moon-container"><span className="theme-switch__moon"><i /><i /><i /></span></span></span></span>
+              </label>
+              <button className="icon-btn notification" aria-label="Thông báo" aria-expanded={noticeOpen} onClick={() => setNoticeOpen((value) => !value)}>
+                <Bell />{(alert || notifications.length > 0 || wishMatches.length > 0) && <i />}
+              </button>
+              <button className="icon-btn" aria-label="Đã lưu" onClick={() => go("saved")}><Heart /></button>
               <button
                 className="avatar-btn"
                 onClick={() => go(admin ? "admin" : "profile")}
@@ -335,9 +316,10 @@ function Header({
               </button>
             </>
           ) : (
-            <button className="post-btn" onClick={() => go("auth")}>
-              Đăng nhập
-            </button>
+            <>
+              <button className="login-outline" onClick={() => { sessionStorage.setItem("uniloop-auth-mode", "login"); go("auth"); }}>Đăng nhập</button>
+              <button className="post-btn" onClick={() => { sessionStorage.setItem("uniloop-auth-mode", "register"); go("auth"); }}>Đăng ký</button>
+            </>
           )}
           <button
             className="mobile-menu"
@@ -493,12 +475,7 @@ function HomePage({
     schools = new Set(products.map((x) => x.school)).size;
   return (
     <>
-      <section className="hero container campus-home-board">
-        <div className="home-card-label">Campus Marketplace</div>
-        <div className="home-board-line">
-          <Logo />
-          <span>Good people · Greener campuses · Brighter tomorrows</span>
-        </div>
+      <section className="hero container reference-home-hero">
         <div className="hero-copy">
           <span className="eyebrow">UNILOOP · VÒNG ĐỜI MỚI CHO ĐỒ CŨ</span>
           <h1>
@@ -535,17 +512,15 @@ function HomePage({
             ))}
           </div>
           <div className="home-trust-row">
-            <span><b>{live.length}</b><small>Tin đang mở</small></span>
-            <span><b>{members.length}</b><small>Thành viên</small></span>
-            <span><b>{schools}</b><small>Campus kết nối</small></span>
+            <span><i><Package /></i><b>{live.length}</b><small>Tin đang mở</small></span>
+            <span><i><Users /></i><b>{members.length}</b><small>Thành viên</small></span>
+            <span><i><MapPin /></i><b>{schools}</b><small>Campus kết nối</small></span>
           </div>
         </div>
         <div className="hero-visual">
           <div className="board-caption"><span>YOUR CAMPUS LOOP</span><span>2026</span></div>
           <div className="hero-poster">
-            <span className="poster-orbit orbit-one" />
-            <span className="poster-orbit orbit-two" />
-            <Recycle className="poster-loop" aria-hidden="true" />
+            <img className="hero-campus-art" src="/hero-campus-collage.png" alt="Sách, tai nghe và laptop được trao lại trong khuôn viên trường" />
             <div className="poster-copy">
               <small>ĐỪNG VỨT ĐI</small>
               <strong>
@@ -575,7 +550,10 @@ function HomePage({
             </div>
           </div>
           <div className="home-tape" />
+          <div className="hero-slider-controls"><span><i className="active" /><i /><i /></span><button aria-label="Ảnh trước"><ArrowLeft /></button><button aria-label="Ảnh tiếp theo"><ArrowRight /></button></div>
         </div>
+        <div className="hero-hand-note"><Recycle /><span>Đồ cũ<br />vẫn có giá trị mới</span></div>
+        <div className="hero-footnote"><i /> VÌ MỘT CAMPUS XANH HƠN, CÙNG NHAU.</div>
       </section>
       <main className="container home-content">
         <section className="category-section">
@@ -3494,7 +3472,7 @@ export default function App() {
       <>
         <ToastHost />
         <AuthPage
-          initial="login"
+          initial={sessionStorage.getItem("uniloop-auth-mode") === "register" ? "register" : "login"}
           done={(isAdmin) => go(isAdmin ? "admin" : "home")}
         />
       </>
