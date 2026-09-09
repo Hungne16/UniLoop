@@ -19,6 +19,7 @@ import {
   Recycle,
   Search,
   Send,
+  Settings,
   ShieldCheck,
   Sparkles,
   Star,
@@ -2283,6 +2284,7 @@ function ProfilePage({ editListing }: { editListing: (x: Listing) => void }) {
       socialURL: me?.socialURL || "",
     }),
     [avatarBusy, setAvatarBusy] = useState(false),
+    [editorOpen, setEditorOpen] = useState(false),
     [notice, setNotice] = useState(""),
     [error, setError] = useState("");
   useEffect(() => {
@@ -2301,7 +2303,23 @@ function ProfilePage({ editListing }: { editListing: (x: Listing) => void }) {
   const avg = reviews.filter((r) => r.revieweeId === user.uid),
     score = avg.length
       ? (avg.reduce((s, r) => s + r.rating, 0) / avg.length).toFixed(1)
-      : "—";
+      : "—",
+    completed = offers.filter(
+      (offer) =>
+        offer.status === "completed" &&
+        (offer.buyerId === user.uid || offer.sellerId === user.uid),
+    ).length,
+    verified = badges.includes(user.uid),
+    completedFields = [
+      form.name,
+      form.university,
+      form.major,
+      form.cohort,
+      form.bio,
+      form.photoURL,
+      form.socialURL,
+    ].filter((value) => value.trim()).length,
+    completion = Math.round((completedFields / 7) * 100);
   const save = async (e: FormEvent) => {
     e.preventDefault();
     try {
@@ -2311,6 +2329,7 @@ function ProfilePage({ editListing }: { editListing: (x: Listing) => void }) {
       );
       setNotice("Đã lưu hồ sơ.");
       toast("Đã cập nhật hồ sơ và tên hiển thị.");
+      setEditorOpen(false);
     } catch (err) {
       setError(errorMessage(err));
       toast(errorMessage(err), "error");
@@ -2349,8 +2368,9 @@ function ProfilePage({ editListing }: { editListing: (x: Listing) => void }) {
     }
   };
   return (
-    <main className="profile-page container">
+    <main className="profile-page member-profile-page container">
       <section className="profile-hero">
+        <div className="profile-card-label">Member Profile</div>
         <Avatar member={me} userName={user.displayName || ""} />
         <div>
           <span className="section-kicker">HỒ SƠ THÀNH VIÊN</span>
@@ -2362,25 +2382,56 @@ function ProfilePage({ editListing }: { editListing: (x: Listing) => void }) {
             {me?.university || "Chưa cập nhật trường"}{" "}
             {me?.major && "· " + me.major}
           </p>
+          <p className="profile-bio-line">
+            {me?.bio || "Thêm vài dòng giới thiệu để cộng đồng hiểu bạn hơn."}
+          </p>
         </div>
         <div className="profile-metrics">
           <span>
             <b>{score}</b>Đánh giá
           </span>
           <span>
-            <b>{avg.length}</b>Nhận xét
+            <b>{completed}</b>Đã giao dịch
           </span>
           <span>
-            <b>{ownListings.length}</b>Tin của bạn
+            <b>{completion}%</b>Hoàn thiện
+          </span>
+          <span className={verified ? "verified" : ""}>
+            <b><ShieldCheck /></b>{verified ? "Đã xác minh" : "Chưa xác minh"}
           </span>
         </div>
+        <button
+          className="profile-settings-button"
+          onClick={() => setEditorOpen(true)}
+          aria-label="Chỉnh sửa hồ sơ"
+          aria-expanded={editorOpen}
+        >
+          <Settings />
+          <span>Chỉnh sửa</span>
+        </button>
       </section>
       {error && <p className="auth-error">{error}</p>}
-      {notice && <p role="status">{notice}</p>}
-      <div className="profile-layout">
+      {notice && <p className="profile-feedback" role="status">{notice}</p>}
+      {editorOpen && (
+        <button
+          className="profile-settings-scrim"
+          onClick={() => setEditorOpen(false)}
+          aria-label="Đóng phần chỉnh sửa"
+        />
+      )}
+      <div className={`profile-layout ${editorOpen ? "settings-open" : ""}`}>
         <section>
+          <button
+            type="button"
+            className="profile-settings-close"
+            onClick={() => setEditorOpen(false)}
+            aria-label="Đóng"
+          >
+            <X />
+          </button>
           <form className="wizard" onSubmit={save}>
-            <h2>Thông tin cá nhân</h2>
+            <span className="section-kicker">CÀI ĐẶT HỒ SƠ</span>
+            <h2>Chỉnh sửa thông tin</h2>
             <div className="form-grid">
               <label className="full avatar-editor">
                 Ảnh đại diện
@@ -2549,6 +2600,46 @@ function ProfilePage({ editListing }: { editListing: (x: Listing) => void }) {
               />
             )}
           </div>
+          <section className="own-review-panel">
+            <div className="section-heading compact">
+              <div>
+                <span className="section-kicker">ĐÁNH GIÁ / UY TÍN</span>
+                <h2>Người khác nói gì?</h2>
+              </div>
+              <span>{avg.length} nhận xét</span>
+            </div>
+            <div className="public-reviews">
+              {avg.slice(0, 6).map((review) => {
+                const author = members.find(
+                  (member) => member.id === review.reviewerId,
+                );
+                return (
+                  <article key={review.id}>
+                    <Avatar member={author} userName={author?.name || "U"} />
+                    <div>
+                      <strong>{author?.name || "Thành viên UniLoop"}</strong>
+                      <span>
+                        {"★".repeat(review.rating)}
+                        {"☆".repeat(5 - review.rating)}
+                      </span>
+                      <p>{review.text}</p>
+                    </div>
+                  </article>
+                );
+              })}
+              {!avg.length && (
+                <p className="profile-review-empty">
+                  Chưa có đánh giá. Hoàn tất giao dịch đầu tiên để xây dựng độ
+                  uy tín.
+                </p>
+              )}
+            </div>
+            <div className="profile-highlights">
+              <span><ShieldCheck /> {verified ? "Sinh viên đã xác minh" : "Hồ sơ thành viên"}</span>
+              <span><Star /> {score === "—" ? "Thành viên mới" : `${score} sao`}</span>
+              <span><Recycle /> {completed} giao dịch hoàn tất</span>
+            </div>
+          </section>
           <TransactionHistory
             offers={offers}
             memberId={user.uid}
