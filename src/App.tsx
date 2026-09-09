@@ -4,17 +4,21 @@ import { useGSAP } from "@gsap/react";
 import {
   ArrowLeft,
   ArrowRight,
+  Armchair,
   Bell,
+  BookOpen,
   CalendarDays,
   Check,
   CheckCircle2,
   Clock3,
   Heart,
+  Laptop,
   LogOut,
   MapPin,
   Menu,
   MessageCircle,
   Package,
+  PenTool,
   Phone,
   Plus,
   Recycle,
@@ -22,8 +26,10 @@ import {
   Send,
   Settings,
   ShieldCheck,
+  Shirt,
   Sparkles,
   Star,
+  Trophy,
   Trash2,
   UserRound,
   Users,
@@ -100,6 +106,7 @@ import {
   type Wish,
 } from "./domain";
 import "./app.css";
+import "./polish.css";
 
 gsap.registerPlugin(useGSAP);
 type Page =
@@ -128,6 +135,7 @@ const blank: ListingInput = {
   seniorPass: false,
   targetCohorts: "",
 };
+const HOME_CATEGORY_ICONS = [BookOpen, Laptop, Shirt, Armchair, PenTool, Trophy];
 
 const localDateInput = (value = new Date()) => {
   const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000);
@@ -486,6 +494,7 @@ function HomePage({
   setTerm: (s: string) => void;
 }) {
   const { products, members } = useBackend(),
+    heroRef = useRef<HTMLElement>(null),
     live = products.filter(available),
     schools = new Set(products.map((x) => x.school)).size,
     [slide, setSlide] = useState(0),
@@ -496,9 +505,35 @@ function HomePage({
     ],
     activeSlide = heroSlides[slide],
     moveSlide = (direction: number) => setSlide((current) => (current + direction + heroSlides.length) % heroSlides.length);
+  useGSAP(
+    () => {
+      const mm = gsap.matchMedia();
+      mm.add("(prefers-reduced-motion: no-preference)", () => {
+        const timeline = gsap.timeline({ defaults: { ease: "power3.out" } });
+        timeline
+          .from(".hero-copy > .eyebrow", { y: 14, autoAlpha: 0, duration: 0.4 })
+          .from(".hero-copy > h1", { y: 34, autoAlpha: 0, duration: 0.72 }, "-=0.18")
+          .from(".hero-copy > p, .hero-search, .quick-search", {
+            y: 18,
+            autoAlpha: 0,
+            duration: 0.46,
+            stagger: 0.08,
+          }, "-=0.38")
+          .from(".home-trust-row > span", {
+            y: 14,
+            autoAlpha: 0,
+            duration: 0.38,
+            stagger: 0.07,
+          }, "-=0.25")
+          .from(".hero-visual", { x: 36, rotation: 1.4, autoAlpha: 0, duration: 0.8 }, 0.12);
+      });
+      return () => mm.revert();
+    },
+    { scope: heroRef },
+  );
   return (
     <>
-      <section className="hero container reference-home-hero">
+      <section ref={heroRef} className="hero container reference-home-hero">
         <div className="hero-copy">
           <span className="eyebrow">UNILOOP · VÒNG ĐỜI MỚI CHO ĐỒ CŨ</span>
           <h1>
@@ -589,28 +624,34 @@ function HomePage({
             </button>
           </div>
           <div className="category-grid">
-            {CATEGORIES.slice(0, 6).map((c, index) => (
-              <button
-                className="category-card"
-                key={c}
-                onClick={() => {
-                  setTerm(c);
-                  go("explore");
-                }}
-              >
-                <span className="category-icon">{["📚", "💻", "👕", "🏠", "✏️", "🏸"][index]}</span>
-                <span>
-                  <b>{c}</b>
-                  <small>
-                    {
-                      products.filter((x) => x.category === c && available(x))
-                        .length
-                    }{" "}
-                    tin đang mở
-                  </small>
-                </span>
-              </button>
-            ))}
+            {CATEGORIES.slice(0, 6).map((c, index) => {
+              const CategoryIcon = HOME_CATEGORY_ICONS[index] || Package;
+              return (
+                <button
+                  className="category-card"
+                  key={c}
+                  onClick={() => {
+                    setTerm(c);
+                    go("explore");
+                  }}
+                >
+                  <span className="category-icon">
+                    <CategoryIcon aria-hidden="true" />
+                  </span>
+                  <span>
+                    <b>{c}</b>
+                    <small>
+                      {
+                        products.filter(
+                          (x) => x.category === c && available(x),
+                        ).length
+                      }{" "}
+                      tin đang mở
+                    </small>
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </section>
         <section className="product-section">
@@ -3513,7 +3554,7 @@ export default function App() {
       </>
     );
   return (
-    <div ref={root} className="app page-motion">
+    <div ref={root} className="app page-motion" data-page={page}>
       <ToastHost />
       {backend.restricted && (
         <div className="restriction">
