@@ -7,6 +7,7 @@ import {
 } from "@firebase/rules-unit-testing";
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -27,7 +28,10 @@ const member = {
   cohort: "K68",
   bio: "",
   photoURL: "",
-  socialURL: "",
+  facebookURL: "",
+  instagramURL: "",
+  xURL: "",
+  phone: "",
   updatedAt: now(),
 };
 const listing = (ownerId, slot = "0", extra = {}) => ({
@@ -47,6 +51,8 @@ const listing = (ownerId, slot = "0", extra = {}) => ({
   exchangeTarget: "",
   defects: "",
   negotiable: true,
+  seniorPass: false,
+  targetCohorts: "",
   createdAt: now(),
   updatedAt: now(),
   expiresAt: now() + 86400000,
@@ -230,6 +236,26 @@ test("seller can atomically accept, outsider cannot confirm", async () => {
     }),
   );
 });
+test("either transaction party can cancel an accepted deal before confirmation", async () => {
+  await seed();
+  await env.withSecurityRulesDisabled(async (c) => {
+    await setDoc(doc(c.firestore(), "offers/o1"), offer({ status: "accepted" }));
+    await updateDoc(doc(c.firestore(), "listings/l1"), {
+      status: "reserved",
+      chosenOfferId: "o1",
+    });
+  });
+  const buyer = db("buyer"), batch = writeBatch(buyer);
+  batch.update(doc(buyer, "offers/o1"), {
+    status: "cancelled",
+    updatedAt: now(),
+  });
+  batch.update(doc(buyer, "listings/l1"), {
+    status: "active",
+    chosenOfferId: "",
+  });
+  await assertSucceeds(batch.commit());
+});
 test("review is allowed after completion and preserves immutable fields when edited", async () => {
   await seed();
   await env.withSecurityRulesDisabled((c) =>
@@ -412,4 +438,24 @@ test("only admin can send global or private notifications", async () => {
       targetId: "",
     }),
   );
+});
+test("a member can privately create and remove Wish Match needs", async () => {
+  const buyer = db("buyer"),
+    wish = {
+      ownerId: "buyer",
+      query: "quạt",
+      school: "VNU",
+      maxPrice: 200000,
+      createdAt: now(),
+      updatedAt: now(),
+    };
+  await assertSucceeds(setDoc(doc(buyer, "wishes/w1"), wish));
+  await assertSucceeds(
+    getDocs(
+      query(collection(buyer, "wishes"), where("ownerId", "==", "buyer")),
+    ),
+  );
+  await assertFails(getDoc(doc(db("outsider"), "wishes/w1")));
+  await assertFails(deleteDoc(doc(db("outsider"), "wishes/w1")));
+  await assertSucceeds(deleteDoc(doc(buyer, "wishes/w1")));
 });

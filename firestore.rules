@@ -30,10 +30,12 @@ service cloud.firestore {
   }
   match /members/{uid}{
    allow read:if true;
-   allow create,update:if own(uid) && request.resource.data.keys().hasOnly(['name','university','major','cohort','bio','photoURL','socialURL','updatedAt'])
+   allow create,update:if own(uid) && request.resource.data.keys().hasOnly(['name','university','major','cohort','bio','photoURL','socialURL','facebookURL','instagramURL','xURL','phone','updatedAt'])
     && text(request.resource.data.name,100) && request.resource.data.name.size()>0
     && text(request.resource.data.university,100) && text(request.resource.data.major,100) && text(request.resource.data.cohort,30)
-    && text(request.resource.data.bio,1000) && image(request.resource.data.photoURL) && text(request.resource.data.socialURL,2000);
+    && text(request.resource.data.bio,1000) && image(request.resource.data.photoURL)
+    && text(request.resource.data.facebookURL,2000) && text(request.resource.data.instagramURL,2000)
+    && text(request.resource.data.xURL,2000) && text(request.resource.data.phone,30);
    allow delete:if admin();
    match /favorites/{id}{allow read,delete:if own(uid);allow create,update:if own(uid) && request.resource.data.keys().hasOnly(['createdAt']);}
    match /slots/{slot}{
@@ -45,13 +47,16 @@ service cloud.firestore {
    }
   }
   function validListing(d){
-   return d.keys().hasOnly(['ownerId','title','price','type','description','condition','category','school','area','images','imagePaths','status','slot','exchangeTarget','defects','negotiable','createdAt','expiresAt','updatedAt','chosenOfferId'])
+   return d.keys().hasOnly(['ownerId','title','price','type','description','condition','category','school','area','images','imagePaths','status','slot','exchangeTarget','defects','negotiable','seniorPass','targetCohorts','createdAt','expiresAt','updatedAt','chosenOfferId'])
     && text(d.title,150) && d.title.size()>0 && text(d.description,5000) && text(d.defects,2000)
     && text(d.area,200) && text(d.school,100) && text(d.category,100)
     && d.type in ['sale','free','exchange','sale_or_exchange'] && d.price is number && d.price>=0 && d.price<=1000000000
     && (d.type!='free' || d.price==0) && (!(d.type in ['sale','sale_or_exchange']) || d.price>0)
     && d.condition in ['Mới','Như mới','Tốt','Đã qua sử dụng','Cần sửa chữa'] && (d.condition!='Cần sửa chữa' || d.defects.size()>0)
-    && text(d.exchangeTarget,500) && d.negotiable is bool && d.images is list && d.images.size()>0 && d.images.size()<=5
+    && text(d.exchangeTarget,500) && d.negotiable is bool
+    && (!('seniorPass' in d) || d.seniorPass is bool) && (!('targetCohorts' in d) || text(d.targetCohorts,100))
+    && (!(('seniorPass' in d) && d.seniorPass) || (('targetCohorts' in d) && d.targetCohorts.size()>0))
+    && d.images is list && d.images.size()>0 && d.images.size()<=5
     && image(d.images[0])
     && (d.images.size()<2 || image(d.images[1])) && (d.images.size()<3 || image(d.images[2]))
     && (d.images.size()<4 || image(d.images[3])) && (d.images.size()<5 || image(d.images[4]))
@@ -181,6 +186,16 @@ service cloud.firestore {
     && text(request.resource.data.title,150) && text(request.resource.data.description,3000) && text(request.resource.data.school,100)
     && request.resource.data.budget is number && request.resource.data.budget>=0 && recent(request.resource.data.createdAt) && request.resource.data.expiresAt<=request.time.toMillis()+1209660000;
    allow delete:if own(resource.data.ownerId)||admin();
+  }
+  match /wishes/{id}{
+   allow read:if own(resource.data.ownerId);
+   allow create:if own(request.resource.data.ownerId)
+    && request.resource.data.keys().hasOnly(['ownerId','query','school','maxPrice','createdAt','updatedAt'])
+    && text(request.resource.data.query,150) && request.resource.data.query.size()>0
+    && text(request.resource.data.school,100) && request.resource.data.maxPrice is number
+    && request.resource.data.maxPrice>=0 && request.resource.data.maxPrice<=1000000000
+    && recent(request.resource.data.createdAt);
+   allow delete:if own(resource.data.ownerId);
   }
   match /{document=**}{allow read,write:if false;}
  }

@@ -2,11 +2,11 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { onIdTokenChanged, type User } from 'firebase/auth'
 import { collection, doc, onSnapshot, query, where, setDoc, deleteDoc, getDoc, limit } from 'firebase/firestore'
 import { auth, db, errorMessage } from './firebase'
-import type { Listing, Member, Notification, Offer, Report, Review, Verification } from './domain'
+import type { Listing, Member, Notification, Offer, Report, Review, Verification, Wish } from './domain'
 
 type Backend = {
  user:User|null;admin:boolean;ready:boolean;restricted:boolean;products:Listing[];ownListings:Listing[];members:Member[];
- saved:string[];offers:Offer[];reviews:Review[];reports:Report[];verification:Verification|null;badges:string[];notifications:Notification[];
+ saved:string[];offers:Offer[];reviews:Review[];reports:Report[];verification:Verification|null;badges:string[];notifications:Notification[];wishes:Wish[];
  loading:boolean;error:string;toggleSaved:(id:string)=>Promise<void>;reload:()=>void;feedLimit:number;loadMore:()=>void
 }
 const Context=createContext<Backend>(null!)
@@ -14,7 +14,7 @@ export const useBackend=()=>useContext(Context)
 export function BackendProvider({children}:{children:ReactNode}){
  const [user,setUser]=useState<User|null>(null),[admin,setAdmin]=useState(false),[ready,setReady]=useState(false),[restricted,setRestricted]=useState(false)
  const [products,setProducts]=useState<Listing[]>([]),[ownListings,setOwnListings]=useState<Listing[]>([]),[members,setMembers]=useState<Member[]>([])
- const [saved,setSaved]=useState<string[]>([]),[offers,setOffers]=useState<Offer[]>([]),[reviews,setReviews]=useState<Review[]>([]),[reports,setReports]=useState<Report[]>([]),[badges,setBadges]=useState<string[]>([]),[notifications,setNotifications]=useState<Notification[]>([])
+ const [saved,setSaved]=useState<string[]>([]),[offers,setOffers]=useState<Offer[]>([]),[reviews,setReviews]=useState<Review[]>([]),[reports,setReports]=useState<Report[]>([]),[badges,setBadges]=useState<string[]>([]),[notifications,setNotifications]=useState<Notification[]>([]),[wishes,setWishes]=useState<Wish[]>([])
  const [verification,setVerification]=useState<Verification|null>(null),[loading,setLoading]=useState(true),[error,setError]=useState(''),[retry,setRetry]=useState(0),[feedLimit,setFeedLimit]=useState(100)
  useEffect(()=>{
   let generation=0
@@ -43,7 +43,7 @@ export function BackendProvider({children}:{children:ReactNode}){
   return ()=>stops.forEach(stop=>stop())
  },[retry,feedLimit])
  useEffect(()=>{
-  setSaved([]);setOffers([]);setOwnListings([]);setReports([]);setVerification(null);setRestricted(false);setNotifications([])
+  setSaved([]);setOffers([]);setOwnListings([]);setReports([]);setVerification(null);setRestricted(false);setNotifications([]);setWishes([])
   if(!user)return
   const fail=(e:unknown)=>setError(errorMessage(e))
   let incoming:Offer[]=[],outgoing:Offer[]=[]
@@ -58,6 +58,7 @@ export function BackendProvider({children}:{children:ReactNode}){
    onSnapshot(query(collection(db,'reports'),where('reporterId','==',user.uid)),s=>setReports(s.docs.map(d=>({...d.data(),id:d.id}) as Report)),fail),
    onSnapshot(doc(db,'verifications',user.uid),s=>setVerification(s.exists()?{...s.data(),id:s.id} as Verification:null),fail),
    onSnapshot(doc(db,'moderation',user.uid),s=>setRestricted(s.exists()&&s.data()?.status!=='active'),fail)
+   ,onSnapshot(query(collection(db,'wishes'),where('ownerId','==',user.uid)),s=>setWishes(s.docs.map(d=>({...d.data(),id:d.id}) as Wish)),fail)
    ,onSnapshot(query(collection(db,'notifications'),where('targetType','==','all')),s=>{globalNotices=s.docs.map(d=>({...d.data(),id:d.id}) as Notification);mergeNotices()},fail)
    ,onSnapshot(query(collection(db,'notifications'),where('targetId','==',user.uid)),s=>{personalNotices=s.docs.map(d=>({...d.data(),id:d.id}) as Notification);mergeNotices()},fail)
   ]
@@ -68,5 +69,5 @@ export function BackendProvider({children}:{children:ReactNode}){
   const target=doc(db,'members',user.uid,'favorites',id)
   if(saved.includes(id))await deleteDoc(target);else await setDoc(target,{createdAt:Date.now()})
  }
- return <Context.Provider value={{user,admin,ready,restricted,products,ownListings,members,saved,offers,reviews,reports,verification,badges,notifications,loading,error,toggleSaved,reload:()=>setRetry(v=>v+1),feedLimit,loadMore:()=>setFeedLimit(v=>v+100)}}>{children}</Context.Provider>
+ return <Context.Provider value={{user,admin,ready,restricted,products,ownListings,members,saved,offers,reviews,reports,verification,badges,notifications,wishes,loading,error,toggleSaved,reload:()=>setRetry(v=>v+1),feedLimit,loadMore:()=>setFeedLimit(v=>v+100)}}>{children}</Context.Provider>
 }

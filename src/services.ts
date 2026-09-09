@@ -5,6 +5,7 @@ import {
   setDoc,
   updateDoc,
   addDoc,
+  deleteDoc,
 } from "firebase/firestore";
 import { deleteObject, ref } from "firebase/storage";
 import { auth, db, storage } from "./firebase";
@@ -15,6 +16,7 @@ import {
   type Member,
   type Offer,
   type Report,
+  type Wish,
 } from "./domain";
 
 const requireUser = () => {
@@ -36,6 +38,8 @@ export type ListingInput = Pick<
   | "exchangeTarget"
   | "defects"
   | "negotiable"
+  | "seniorPass"
+  | "targetCohorts"
 >;
 export async function prepareImage(file: File) {
   if (
@@ -452,9 +456,45 @@ export async function reportTarget(
 }
 export async function saveMember(input: Omit<Member, "id" | "updatedAt">) {
   const uid = requireUser();
+  const socialHosts: Array<[string, string[]]> = [
+    [input.facebookURL, ["facebook.com", "fb.com"]],
+    [input.instagramURL, ["instagram.com"]],
+    [input.xURL, ["x.com", "twitter.com"]],
+  ];
+  for (const [value, hosts] of socialHosts) {
+    if (!value) continue;
+    try {
+      const url = new URL(value), hostname = url.hostname.replace(/^www\./, "");
+      if (url.protocol !== "https:" || !hosts.some((host) => hostname === host || hostname.endsWith(`.${host}`)))
+        throw new Error();
+    } catch {
+      throw new Error("Liên kết Facebook, Instagram hoặc X chưa đúng nền tảng.");
+    }
+  }
+  if (input.phone && !/^\+?[0-9 .()-]{8,20}$/.test(input.phone))
+    throw new Error("Số điện thoại không hợp lệ.");
   await setDoc(doc(db, "members", uid), {
     ...input,
     name: input.name.trim(),
     updatedAt: Date.now(),
   });
+}
+export async function saveWish(input: Pick<Wish, "query" | "school" | "maxPrice">) {
+  const uid = requireUser(), now = Date.now();
+  if (!input.query.trim() || input.query.length > 150)
+    throw new Error("Nhập nhu cầu muốn tìm.");
+  if (!Number.isFinite(input.maxPrice) || input.maxPrice < 0)
+    throw new Error("Ngân sách không hợp lệ.");
+  await addDoc(collection(db, "wishes"), {
+    ownerId: uid,
+    query: input.query.trim(),
+    school: input.school,
+    maxPrice: input.maxPrice,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
+export async function removeWish(id: string) {
+  requireUser();
+  await deleteDoc(doc(db, "wishes", id));
 }

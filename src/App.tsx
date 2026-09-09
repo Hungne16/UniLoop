@@ -15,6 +15,7 @@ import {
   Menu,
   MessageCircle,
   Package,
+  Phone,
   Plus,
   Recycle,
   Search,
@@ -66,6 +67,8 @@ import {
   saveListing,
   saveMember,
   savePaymentQR,
+  saveWish,
+  removeWish,
   saveReview,
   scheduleMeeting,
   sendChatMessage,
@@ -90,6 +93,7 @@ import {
   type Offer,
   type Report,
   type Verification,
+  type Wish,
 } from "./domain";
 import "./app.css";
 
@@ -117,6 +121,8 @@ const blank: ListingInput = {
   exchangeTarget: "",
   defects: "",
   negotiable: true,
+  seniorPass: false,
+  targetCohorts: "",
 };
 
 const localDateInput = (value = new Date()) => {
@@ -173,6 +179,29 @@ function Avatar({ member, userName }: { member?: Member; userName?: string }) {
     </span>
   );
 }
+function SocialLinks({ member }: { member?: Member }) {
+  const phone = (member?.phone || "").replace(/[^\d+]/g, ""),
+    links = [
+      { key: "facebook", label: "Facebook", href: safeURL(member?.facebookURL || ""), icon: "f" },
+      { key: "instagram", label: "Instagram", href: safeURL(member?.instagramURL || ""), icon: "◎" },
+      { key: "x", label: "X", href: safeURL(member?.xURL || ""), icon: "𝕏" },
+    ].filter((item) => item.href);
+  if (!links.length && !phone) return null;
+  return (
+    <div className="social-platform-links" aria-label="Liên hệ mạng xã hội">
+      {links.map((item) => (
+        <a className={item.key} key={item.key} href={item.href} target="_blank" rel="noreferrer">
+          <i>{item.icon}</i><span>{item.label}</span>
+        </a>
+      ))}
+      {phone && (
+        <a className="phone" href={`tel:${phone}`}>
+          <i><Phone /></i><span>{member?.phone}</span>
+        </a>
+      )}
+    </div>
+  );
+}
 
 type ToastDetail = { message: string; tone?: "success" | "error" | "info" };
 const toast = (message: string, tone: ToastDetail["tone"] = "success") =>
@@ -216,13 +245,23 @@ function Header({
   term: string;
   setTerm: (s: string) => void;
 }) {
-  const { user, admin, offers, members, notifications } = useBackend(),
+  const { user, admin, offers, members, notifications, wishes, products } = useBackend(),
     me = members.find((member) => member.id === user?.uid),
     [open, setOpen] = useState(false),
     [noticeOpen, setNoticeOpen] = useState(false);
   const alert = offers.some((o) =>
     ["pending", "countered", "accepted"].includes(o.status),
-  );
+  ),
+    wishMatches = products.filter((product) =>
+      wishes.some(
+        (wish) =>
+          available(product) &&
+          product.ownerId !== user?.uid &&
+          (wish.school === "all" || product.school === wish.school) &&
+          (wish.maxPrice === 0 || product.price <= wish.maxPrice) &&
+          matches([product.title, product.description, product.category].join(" "), wish.query),
+      ),
+    );
   return (
     <header className="app-header">
       <div className="header-inner">
@@ -259,7 +298,7 @@ function Header({
             onClick={() => setNoticeOpen((value) => !value)}
           >
             <Bell />
-            {(alert || notifications.length > 0) && <i />}
+            {(alert || notifications.length > 0 || wishMatches.length > 0) && <i />}
           </button>
           <button
             className="icon-btn"
@@ -317,6 +356,15 @@ function Header({
               </span>
             </button>
           )}
+          {wishMatches.length > 0 && (
+            <button
+              className="transaction-alert wish-alert"
+              onClick={() => { setNoticeOpen(false); go("saved"); }}
+            >
+              <Sparkles size={18} />
+              <span><b>Wish Match tìm thấy {wishMatches.length} món</b><small>Mở danh sách để xem món phù hợp nhu cầu.</small></span>
+            </button>
+          )}
           {notifications.slice(0, 8).map((item) => (
             <article key={item.id}>
               <Bell size={16} />
@@ -327,7 +375,7 @@ function Header({
               </div>
             </article>
           ))}
-          {!alert && !notifications.length && (
+          {!alert && !notifications.length && !wishMatches.length && (
             <p className="notification-empty">Bạn chưa có thông báo mới.</p>
           )}
         </aside>
@@ -371,6 +419,7 @@ function Card({ item, open }: { item: Listing; open: (x: Listing) => void }) {
               ? "CÓ THỂ ĐỔI"
               : "ĐANG BÁN"}
         </span>
+        {item.seniorPass && <span className="senior-pass-tag">SENIOR → JUNIOR</span>}
       </div>
       <div className="product-body">
         <h3 className="product-title">{item.title}</h3>
@@ -553,6 +602,17 @@ function HomePage({
           </div>
           <Grid items={live.slice(0, 8)} open={open} />
         </section>
+        <section className="senior-loop-section">
+          <div className="section-heading">
+            <div>
+              <span className="section-kicker">SENIOR → JUNIOR LOOP</span>
+              <h2>Khóa trước truyền lại khóa sau</h2>
+              <p>Giáo trình, đồ dùng và kinh nghiệm tiếp tục một vòng đời mới.</p>
+            </div>
+            <button onClick={() => go("explore")}>Xem khu Senior Loop <ArrowRight /></button>
+          </div>
+          <Grid items={live.filter((item) => item.seniorPass).slice(0, 4)} open={open} />
+        </section>
         <section className="campus-banner">
           <div>
             <span className="banner-label">CỘNG ĐỒNG THẬT · DỮ LIỆU THẬT</span>
@@ -587,6 +647,8 @@ function Explore({
   const { products, badges } = useBackend(),
     [type, setType] = useState("all"),
     [category, setCategory] = useState("all"),
+    [campus, setCampus] = useState("all"),
+    [seniorOnly, setSeniorOnly] = useState(false),
     [verified, setVerified] = useState(false),
     [sort, setSort] = useState("new");
   const filtered = useMemo(
@@ -596,6 +658,8 @@ function Explore({
           (x) =>
             (type === "all" || x.type === type) &&
             (category === "all" || x.category === category) &&
+            (campus === "all" || x.school === campus) &&
+            (!seniorOnly || x.seniorPass) &&
             (!verified || badges.includes(x.ownerId)) &&
             matches(
               [x.title, x.description, x.category, x.school, x.area].join(" "),
@@ -605,7 +669,7 @@ function Explore({
         .sort((a, b) =>
           sort === "low" ? a.price - b.price : b.createdAt - a.createdAt,
         ),
-    [products, type, category, verified, sort, term, badges],
+    [products, type, category, campus, seniorOnly, verified, sort, term, badges],
   );
   return (
     <main className="explore-page container">
@@ -632,6 +696,8 @@ function Explore({
               onClick={() => {
                 setType("all");
                 setCategory("all");
+                setCampus("all");
+                setSeniorOnly(false);
                 setVerified(false);
                 setTerm("");
               }}
@@ -661,6 +727,18 @@ function Explore({
               ))}
             </select>
           </label>
+          <label>
+            Khu vực campus
+            <select value={campus} onChange={(e) => setCampus(e.target.value)}>
+              <option value="all">Tất cả campus</option>
+              {UNIVERSITIES.map((school) => <option key={school}>{school}</option>)}
+            </select>
+          </label>
+          <label className="toggle-row">
+            Senior → Junior Loop
+            <input type="checkbox" checked={seniorOnly} onChange={(e) => setSeniorOnly(e.target.checked)} />
+            <span className="toggle" />
+          </label>
           <label className="toggle-row">
             Chỉ người đã xác minh
             <input
@@ -683,6 +761,72 @@ function Explore({
         </section>
       </div>
     </main>
+  );
+}
+
+function WishCenter({ open }: { open: (listing: Listing) => void }) {
+  const { user, wishes, products } = useBackend(),
+    [busy, setBusy] = useState(false);
+  const matched = products.filter((product) =>
+    wishes.some(
+      (wish) =>
+        available(product) &&
+        product.ownerId !== user?.uid &&
+        (wish.school === "all" || product.school === wish.school) &&
+        (wish.maxPrice === 0 || product.price <= wish.maxPrice) &&
+        matches([product.title, product.description, product.category].join(" "), wish.query),
+    ),
+  );
+  if (!user) return null;
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const target = event.currentTarget,
+      data = new FormData(target);
+    setBusy(true);
+    try {
+      await saveWish({
+        query: String(data.get("query")),
+        school: String(data.get("school")),
+        maxPrice: Number(data.get("maxPrice")),
+      });
+      target.reset();
+      toast("Đã lưu Wish Match. UniLoop sẽ đối chiếu món mới realtime.");
+    } catch (reason) {
+      toast(errorMessage(reason), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section className="wish-center">
+      <div className="wish-intro">
+        <span className="section-kicker">WISH MATCH</span>
+        <h2>Lưu món bạn đang tìm</h2>
+        <p>Ví dụ: “quạt dưới 200k quanh VNU”. Khi có món khớp, chuông thông báo sẽ sáng ngay trong ứng dụng.</p>
+      </div>
+      <form onSubmit={submit}>
+        <label>Nhu cầu<input name="query" required maxLength={150} placeholder="Quạt, giáo trình, bàn học..." /></label>
+        <label>Campus<select name="school" defaultValue="all"><option value="all">Tất cả campus</option>{UNIVERSITIES.map((school) => <option key={school}>{school}</option>)}</select></label>
+        <label>Ngân sách tối đa<input name="maxPrice" type="number" min="0" max="1000000000" defaultValue="0" /><small>Để 0 nếu không giới hạn.</small></label>
+        <button disabled={busy}><Sparkles size={17} />{busy ? "Đang lưu…" : "Tạo Wish Match"}</button>
+      </form>
+      {wishes.length > 0 && (
+        <div className="wish-list">
+          {wishes.map((wish: Wish) => (
+            <article key={wish.id}>
+              <div><strong>{wish.query}</strong><span>{wish.school === "all" ? "Mọi campus" : wish.school} · {wish.maxPrice ? `Tối đa ${money(wish.maxPrice)}` : "Không giới hạn giá"}</span></div>
+              <button onClick={() => void removeWish(wish.id).then(() => toast("Đã xóa nhu cầu.")).catch((reason) => toast(errorMessage(reason), "error"))}>Xóa</button>
+            </article>
+          ))}
+        </div>
+      )}
+      {matched.length > 0 && (
+        <div className="wish-results">
+          <div className="section-heading compact"><div><span className="section-kicker">ĐÃ KHỚP</span><h2>{matched.length} món phù hợp</h2></div></div>
+          <Grid items={matched} open={open} />
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -760,6 +904,7 @@ function Detail({
           <div className="detail-labels">
             <span>{item.condition}</span>
             {item.negotiable && <span>Có thương lượng</span>}
+            {item.seniorPass && <span>Senior → Junior · {item.targetCohorts || "Khóa dưới"}</span>}
           </div>
           <h1>{item.title}</h1>
           <div className={"detail-price " + (item.price === 0 ? "free" : "")}>
@@ -999,6 +1144,8 @@ function ListingEditor({
             exchangeTarget: editing.exchangeTarget,
             defects: editing.defects,
             negotiable: editing.negotiable,
+            seniorPass: editing.seniorPass ?? false,
+            targetCohorts: editing.targetCohorts ?? "",
           }
         : blank,
     ),
@@ -1185,6 +1332,18 @@ function ListingEditor({
               placeholder="Ví dụ: Cầu Giấy"
             />
           </label>
+          <label className="toggle-row field-senior-pass">
+            Senior → Junior Loop
+            <input type="checkbox" checked={form.seniorPass} onChange={(e) => set("seniorPass", e.target.checked)} />
+            <span className="toggle" />
+            <small>Đánh dấu món đồ muốn truyền lại cho sinh viên khóa dưới.</small>
+          </label>
+          {form.seniorPass && (
+            <label className="field-target-cohorts">
+              Khóa muốn truyền lại
+              <input required maxLength={100} value={form.targetCohorts} onChange={(e) => set("targetCohorts", e.target.value)} placeholder="Ví dụ: K69–K70" />
+            </label>
+          )}
           <label className="field-description">
             Mô tả
             <textarea
@@ -1339,7 +1498,10 @@ function AuthPage({
           cohort: "",
           bio: "",
           photoURL: "",
-          socialURL: "",
+          facebookURL: "",
+          instagramURL: "",
+          xURL: "",
+          phone: "",
         });
       }
       done(isAdmin);
@@ -1379,7 +1541,10 @@ function AuthPage({
           cohort: "",
           bio: "",
           photoURL: r.user.photoURL || "",
-          socialURL: "",
+          facebookURL: "",
+          instagramURL: "",
+          xURL: "",
+          phone: "",
           updatedAt: Date.now(),
         },
         { merge: true },
@@ -1699,18 +1864,19 @@ function OffersPage({
                       Chấp nhận giá mới
                     </button>
                   )}
-                  {["pending", "countered"].includes(o.status) && (
+                  {(["pending", "countered"].includes(o.status) ||
+                    (o.status === "accepted" && !o.buyerConfirmed && !o.sellerConfirmed)) && (
                     <button
-                      className="secondary"
+                      className={o.status === "accepted" ? "danger" : "secondary"}
                       onClick={() =>
                         act(
                           o.id,
                           () => cancelOffer(o.id),
-                          "Đã hủy đề nghị.",
+                          o.status === "accepted" ? "Đã hủy giao dịch và mở lại tin đăng." : "Đã hủy đề nghị.",
                         )
                       }
                     >
-                      Hủy
+                      {o.status === "accepted" ? "Không giao dịch nữa" : "Hủy đề nghị"}
                     </button>
                   )}
                   {o.status === "accepted" && (
@@ -2221,11 +2387,7 @@ function PublicProfilePage({
               <ShieldCheck /> Đã được UniLoop xác minh thông tin sinh viên
             </div>
           )}
-          {safeURL(member.socialURL) && (
-            <a href={safeURL(member.socialURL)} target="_blank" rel="noreferrer">
-              Xem liên kết công khai <ArrowRight size={16} />
-            </a>
-          )}
+          <SocialLinks member={member} />
         </section>
         <section className="review-panel">
           <span className="section-kicker">ĐÁNH GIÁ THỰC TẾ</span>
@@ -2281,7 +2443,10 @@ function ProfilePage({ editListing }: { editListing: (x: Listing) => void }) {
       cohort: me?.cohort || "",
       bio: me?.bio || "",
       photoURL: me?.photoURL || "",
-      socialURL: me?.socialURL || "",
+      facebookURL: me?.facebookURL || "",
+      instagramURL: me?.instagramURL || "",
+      xURL: me?.xURL || "",
+      phone: me?.phone || "",
     }),
     [avatarBusy, setAvatarBusy] = useState(false),
     [editorOpen, setEditorOpen] = useState(false),
@@ -2296,7 +2461,10 @@ function ProfilePage({ editListing }: { editListing: (x: Listing) => void }) {
         cohort: me.cohort,
         bio: me.bio,
         photoURL: me.photoURL,
-        socialURL: me.socialURL,
+        facebookURL: me.facebookURL || "",
+        instagramURL: me.instagramURL || "",
+        xURL: me.xURL || "",
+        phone: me.phone || "",
       });
   }, [me]);
   if (!user) return null;
@@ -2317,7 +2485,7 @@ function ProfilePage({ editListing }: { editListing: (x: Listing) => void }) {
       form.cohort,
       form.bio,
       form.photoURL,
-      form.socialURL,
+      form.facebookURL || form.instagramURL || form.xURL || form.phone,
     ].filter((value) => value.trim()).length,
     completion = Math.round((completedFields / 7) * 100);
   const save = async (e: FormEvent) => {
@@ -2409,6 +2577,13 @@ function ProfilePage({ editListing }: { editListing: (x: Listing) => void }) {
           <Settings />
           <span>Chỉnh sửa</span>
         </button>
+      </section>
+      <section className="profile-social-strip">
+        <strong>Kết nối với mình</strong>
+        <SocialLinks member={me} />
+        {!me?.facebookURL && !me?.instagramURL && !me?.xURL && !me?.phone && (
+          <button onClick={() => setEditorOpen(true)}><Plus size={16} /> Thêm liên hệ</button>
+        )}
       </section>
       {error && <p className="auth-error">{error}</p>}
       {notice && <p className="profile-feedback" role="status">{notice}</p>}
@@ -2519,26 +2694,12 @@ function ProfilePage({ editListing }: { editListing: (x: Listing) => void }) {
                   }
                 />
               </label>
-              <label className="full">
-                Liên kết mạng xã hội HTTPS
-                <input
-                  value={form.socialURL}
-                  onChange={(e) =>
-                    setForm((v) => ({ ...v, socialURL: e.target.value }))
-                  }
-                />
-              </label>
+              <label>Facebook<input type="url" placeholder="https://facebook.com/..." value={form.facebookURL} onChange={(e) => setForm((v) => ({ ...v, facebookURL: e.target.value }))} /></label>
+              <label>Instagram<input type="url" placeholder="https://instagram.com/..." value={form.instagramURL} onChange={(e) => setForm((v) => ({ ...v, instagramURL: e.target.value }))} /></label>
+              <label>X<input type="url" placeholder="https://x.com/..." value={form.xURL} onChange={(e) => setForm((v) => ({ ...v, xURL: e.target.value }))} /></label>
+              <label>Số điện thoại<input type="tel" maxLength={20} placeholder="09..." value={form.phone} onChange={(e) => setForm((v) => ({ ...v, phone: e.target.value }))} /></label>
             </div>
             <button>Lưu hồ sơ</button>
-            {safeURL(form.socialURL) && (
-              <a
-                href={safeURL(form.socialURL)}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Mở liên kết công khai
-              </a>
-            )}
           </form>
           <h2>Tin của bạn</h2>
           <div className="manage-list">
@@ -3343,6 +3504,7 @@ export default function App() {
       )}{" "}
       {page === "saved" && (
         <main className="container saved-page">
+          <WishCenter open={open} />
           <span className="section-kicker">ĐÃ LƯU</span>
           <h1>Món đồ bạn quan tâm</h1>
           <Grid

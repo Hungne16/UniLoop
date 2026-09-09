@@ -1,18 +1,21 @@
 export const CONDITIONS = ['Mới', 'Như mới', 'Tốt', 'Đã qua sử dụng', 'Cần sửa chữa'] as const
 export const CATEGORIES = ['Sách & giáo trình','Điện tử','Thời trang','Phòng trọ','Dụng cụ học tập','Thể thao','Giải trí','Khác']
-export const UNIVERSITIES = ['VNU','UET','NEU','HUCE','FTU','HUST','PTIT','TMU']
+export const UNIVERSITIES = ['VNU','UET','ULIS','HUCE','HNUE','NEU','FTU','HUST','PTIT','TMU']
 export type ListingType = 'sale' | 'free' | 'exchange' | 'sale_or_exchange'
 export type ListingStatus = 'draft' | 'active' | 'reserved' | 'sold' | 'hidden' | 'blocked'
 export interface Listing {
   id: string; ownerId: string; title: string; price: number; type: ListingType
   description: string; condition: string; category: string; school: string; area: string
   images: string[]; imagePaths: string[]; status: ListingStatus; slot: string
-  exchangeTarget: string; defects: string; negotiable: boolean
+  exchangeTarget: string; defects: string; negotiable: boolean; seniorPass: boolean; targetCohorts: string
   createdAt: number; expiresAt: number; updatedAt: number; chosenOfferId: string
 }
 export interface Member {
   id: string; name: string; university: string; major: string; cohort: string; bio: string
-  photoURL: string; socialURL: string; updatedAt: number
+  photoURL: string; facebookURL: string; instagramURL: string; xURL: string; phone: string; updatedAt: number
+}
+export interface Wish {
+  id:string; ownerId:string; query:string; school:string; maxPrice:number; createdAt:number; updatedAt:number
 }
 export interface Offer {
   id: string; buyerId: string; sellerId: string; listingId: string; title: string
