@@ -46,12 +46,14 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   limitToLast,
   onSnapshot,
   orderBy,
   query,
   setDoc,
   updateDoc,
+  where,
   writeBatch,
 } from "firebase/firestore";
 import { auth, db, errorMessage } from "./firebase";
@@ -251,11 +253,24 @@ function Header({
     me = members.find((member) => member.id === user?.uid),
     [open, setOpen] = useState(false),
     [noticeOpen, setNoticeOpen] = useState(false),
-    [dark, setDark] = useState(() => localStorage.getItem("uniloop-theme") === "dark");
+    themeKey = `uniloop-theme:${user?.uid || "guest"}`,
+    [dark, setDark] = useState(false);
+  useEffect(() => {
+    const saved = localStorage.getItem(themeKey);
+    setDark(saved ? saved === "dark" : matchMedia("(prefers-color-scheme: dark)").matches);
+  }, [themeKey]);
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
-    localStorage.setItem("uniloop-theme", dark ? "dark" : "light");
   }, [dark]);
+  const toggleTheme = () => setDark((value) => {
+    const next = !value;
+    localStorage.setItem(themeKey, next ? "dark" : "light");
+    return next;
+  });
+  const visitHomeSection = (selector: string) => {
+    if (page !== "home") go("home");
+    window.setTimeout(() => document.querySelector(selector)?.scrollIntoView({ behavior: "smooth" }), page === "home" ? 0 : 350);
+  };
   const alert = offers.some((o) =>
     ["pending", "countered", "accepted"].includes(o.status),
   ),
@@ -281,8 +296,8 @@ function Header({
           >
             Mua bán
           </button>
-          <button onClick={() => document.querySelector(".category-section")?.scrollIntoView({ behavior: "smooth" })}>Cộng đồng</button>
-          <button onClick={() => document.querySelector(".campus-banner")?.scrollIntoView({ behavior: "smooth" })}>Hướng dẫn</button>
+          <button onClick={() => visitHomeSection(".category-section")}>Cộng đồng</button>
+          <button onClick={() => visitHomeSection(".campus-banner")}>Hướng dẫn</button>
         </nav>
         <label className="header-search landing-search">
           <Search size={17} />
@@ -298,7 +313,7 @@ function Header({
           {user ? (
             <>
               <label className="theme-switch" aria-label={dark ? "Chuyển sang chế độ sáng" : "Chuyển sang chế độ tối"}>
-                <input className="theme-switch__checkbox" type="checkbox" checked={dark} onChange={() => setDark((value) => !value)} />
+                <input className="theme-switch__checkbox" type="checkbox" checked={dark} onChange={toggleTheme} />
                 <span className="theme-switch__container"><span className="theme-switch__clouds" /><span className="theme-switch__stars-container">✦ · ✧ · ✦</span><span className="theme-switch__circle-container"><span className="theme-switch__sun-moon-container"><span className="theme-switch__moon"><i /><i /><i /></span></span></span></span>
               </label>
               <button className="icon-btn notification" aria-label="Thông báo" aria-expanded={noticeOpen} onClick={() => setNoticeOpen((value) => !value)}>
@@ -309,7 +324,7 @@ function Header({
                 className="avatar-btn"
                 onClick={() => go(admin ? "admin" : "profile")}
               >
-                <Avatar member={me} userName={user.displayName || user.email || "U"} />
+                <Avatar member={me} userName={me ? user.displayName || "U" : "U"} />
               </button>
               <button className="post-btn" onClick={() => go("create")}>
                 <Plus /> Đăng tin
@@ -472,7 +487,15 @@ function HomePage({
 }) {
   const { products, members } = useBackend(),
     live = products.filter(available),
-    schools = new Set(products.map((x) => x.school)).size;
+    schools = new Set(products.map((x) => x.school)).size,
+    [slide, setSlide] = useState(0),
+    heroSlides = [
+      { kicker: "ĐỪNG VỨT ĐI", lines: ["PASS", "LẠI."], text: "Một món đồ cũ.\nMột vòng đời mới." },
+      { kicker: "ĐỔI ĐỒ QUANH CAMPUS", lines: ["ĐỔI", "NHAU."], text: "Đúng món bạn cần.\nĐúng người ở gần." },
+      { kicker: "SENIOR → JUNIOR", lines: ["TRAO", "LẠI."], text: "Khóa trước sẻ chia.\nKhóa sau tiếp bước." },
+    ],
+    activeSlide = heroSlides[slide],
+    moveSlide = (direction: number) => setSlide((current) => (current + direction + heroSlides.length) % heroSlides.length);
   return (
     <>
       <section className="hero container reference-home-hero">
@@ -503,6 +526,7 @@ function HomePage({
               <button
                 key={x}
                 onClick={() => {
+                  sessionStorage.setItem("uniloop-explore-type", x === "Miễn phí" ? "free" : "all");
                   setTerm(x === "Miễn phí" ? "" : x);
                   go("explore");
                 }}
@@ -519,20 +543,14 @@ function HomePage({
         </div>
         <div className="hero-visual">
           <div className="board-caption"><span>YOUR CAMPUS LOOP</span><span>2026</span></div>
-          <div className="hero-poster">
+          <div className={`hero-poster hero-slide-${slide}`}>
             <img className="hero-campus-art" src="/hero-campus-collage.png" alt="Sách, tai nghe và laptop được trao lại trong khuôn viên trường" />
-            <div className="poster-copy">
-              <small>ĐỪNG VỨT ĐI</small>
+            <div className="poster-copy" key={slide}>
+              <small>{activeSlide.kicker}</small>
               <strong>
-                PASS
-                <br />
-                LẠI.
+                {activeSlide.lines[0]}<br />{activeSlide.lines[1]}
               </strong>
-              <p>
-                Một món đồ cũ.
-                <br />
-                Một vòng đời mới.
-              </p>
+              <p>{activeSlide.text.split("\n").map((line) => <span key={line}>{line}<br /></span>)}</p>
             </div>
             <div className="poster-note">
               <Sparkles />
@@ -550,7 +568,11 @@ function HomePage({
             </div>
           </div>
           <div className="home-tape" />
-          <div className="hero-slider-controls"><span><i className="active" /><i /><i /></span><button aria-label="Ảnh trước"><ArrowLeft /></button><button aria-label="Ảnh tiếp theo"><ArrowRight /></button></div>
+          <div className="hero-slider-controls">
+            <span>{heroSlides.map((_, index) => <button key={index} className={index === slide ? "active" : ""} onClick={() => setSlide(index)} aria-label={`Nội dung ${index + 1}`} />)}</span>
+            <button onClick={() => moveSlide(-1)} aria-label="Nội dung trước"><ArrowLeft /></button>
+            <button onClick={() => moveSlide(1)} aria-label="Nội dung tiếp theo"><ArrowRight /></button>
+          </div>
         </div>
         <div className="hero-hand-note"><Recycle /><span>Đồ cũ<br />vẫn có giá trị mới</span></div>
         <div className="hero-footnote"><i /> VÌ MỘT CAMPUS XANH HƠN, CÙNG NHAU.</div>
@@ -651,7 +673,7 @@ function Explore({
   setTerm: (s: string) => void;
 }) {
   const { products, badges } = useBackend(),
-    [type, setType] = useState("all"),
+    [type, setType] = useState(() => sessionStorage.getItem("uniloop-explore-type") || "all"),
     [category, setCategory] = useState("all"),
     [campus, setCampus] = useState("all"),
     [seniorOnly, setSeniorOnly] = useState(false),
@@ -2452,7 +2474,7 @@ function ProfilePage({ editListing }: { editListing: (x: Listing) => void }) {
       useBackend(),
     me = members.find((x) => x.id === user?.uid),
     [form, setForm] = useState({
-      name: me?.name || user?.displayName || "",
+      name: me?.name || "",
       university: me?.university || "",
       major: me?.major || "",
       cohort: me?.cohort || "",
@@ -2481,6 +2503,8 @@ function ProfilePage({ editListing }: { editListing: (x: Listing) => void }) {
         xURL: me.xURL || "",
         phone: me.phone || "",
       });
+    else
+      setForm({ name: "", university: "", major: "", cohort: "", bio: "", photoURL: "", facebookURL: "", instagramURL: "", xURL: "", phone: "" });
   }, [me]);
   if (!user) return null;
   const avg = reviews.filter((r) => r.revieweeId === user.uid),
@@ -2554,11 +2578,11 @@ function ProfilePage({ editListing }: { editListing: (x: Listing) => void }) {
     <main className="profile-page member-profile-page container">
       <section className="profile-hero">
         <div className="profile-card-label">Member Profile</div>
-        <Avatar member={me} userName={user.displayName || ""} />
+        <Avatar member={me} userName="U" />
         <div>
           <span className="section-kicker">HỒ SƠ THÀNH VIÊN</span>
           <h1>
-            {me?.name || user.displayName || "Thành viên mới"}{" "}
+            {me?.name || "Thành viên mới"}{" "}
             {badges.includes(user.uid) && <ShieldCheck />}
           </h1>
           <p>
@@ -2949,31 +2973,35 @@ function AdminPage() {
     await batch.commit();
   };
   const deleteMemberAsAdmin = async (member: Member) => {
-    const batch = writeBatch(db),
-      now = Date.now();
-    batch.set(doc(db, "moderation", member.id), {
-      status: "deleted",
-      reason: "Tài khoản đã bị quản trị viên xóa khỏi UniLoop",
-      updatedAt: now,
-    });
-    batch.delete(doc(db, "members", member.id));
-    batch.delete(doc(db, "studentBadges", member.id));
-    batch.delete(doc(db, "paymentProfiles", member.id));
-    for (let index = 0; index < 5; index++)
-      batch.delete(doc(db, "members", member.id, "slots", String(index)));
-    allListings
-      .filter(
-        (listing) =>
-          listing.ownerId === member.id &&
-          ["active", "draft", "hidden", "blocked"].includes(listing.status),
-      )
-      .forEach((listing) =>
-        batch.update(doc(db, "listings", listing.id), {
-          status: "blocked",
-          updatedAt: now,
-        }),
-      );
-    await batch.commit();
+    const snapshots = await Promise.all([
+      getDocs(query(collection(db, "offers"), where("sellerId", "==", member.id))),
+      getDocs(query(collection(db, "offers"), where("buyerId", "==", member.id))),
+      getDocs(query(collection(db, "reviews"), where("reviewerId", "==", member.id))),
+      getDocs(query(collection(db, "reviews"), where("revieweeId", "==", member.id))),
+      getDocs(query(collection(db, "wishes"), where("ownerId", "==", member.id))),
+      getDocs(collection(db, "members", member.id, "favorites")),
+      getDocs(query(collection(db, "notifications"), where("targetId", "==", member.id))),
+      getDocs(query(collection(db, "reports"), where("reporterId", "==", member.id))),
+    ]);
+    const refs = new Map<string, ReturnType<typeof doc>>();
+    snapshots.forEach((snapshot) => snapshot.docs.forEach((item) => refs.set(item.ref.path, item.ref)));
+    allListings.filter((listing) => listing.ownerId === member.id).forEach((listing) => refs.set(`listings/${listing.id}`, doc(db, "listings", listing.id)));
+    refs.set(`members/${member.id}`, doc(db, "members", member.id));
+    refs.set(`studentBadges/${member.id}`, doc(db, "studentBadges", member.id));
+    refs.set(`paymentProfiles/${member.id}`, doc(db, "paymentProfiles", member.id));
+    refs.set(`verifications/${member.id}`, doc(db, "verifications", member.id));
+    for (let index = 0; index < 5; index++) refs.set(`members/${member.id}/slots/${index}`, doc(db, "members", member.id, "slots", String(index)));
+    const targets = [...refs.values()];
+    for (let start = 0; start < targets.length; start += 450) {
+      const batch = writeBatch(db);
+      targets.slice(start, start + 450).forEach((target) => batch.delete(target));
+      if (start === 0) batch.set(doc(db, "moderation", member.id), {
+        status: "active",
+        reason: "Hồ sơ đã được quản trị viên đặt lại",
+        updatedAt: Date.now(),
+      });
+      await batch.commit();
+    }
   };
   const sendAdminNotification = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -3196,13 +3224,13 @@ function AdminPage() {
                   onClick={() => {
                     if (
                       confirm(
-                        `Xóa ${m.name} khỏi UniLoop? Tài khoản sẽ bị khóa vĩnh viễn và hồ sơ công khai bị xóa.`,
+                        `Đặt lại ${m.name}? Hồ sơ, tin đăng và lịch sử UniLoop sẽ bị xóa. Nếu đăng nhập lại, tài khoản sẽ bắt đầu như thành viên mới.`,
                       )
                     )
                       void adminAction(
                         m.id,
                         () => deleteMemberAsAdmin(m),
-                        "Đã xóa thành viên khỏi UniLoop.",
+                        "Đã đặt lại tài khoản. Người dùng có thể đăng nhập như thành viên mới.",
                       );
                   }}
                 >

@@ -361,7 +361,7 @@ test("admin document grants moderation but remains unwritable by client", async 
   );
   await assertFails(setDoc(doc(db("admin"), "admins/other"), {}));
 });
-test("admin can remove marketplace data and permanently restrict a member", async () => {
+test("admin can reset marketplace data while allowing the account to start fresh", async () => {
   await seed();
   await env.withSecurityRulesDisabled((c) =>
     setDoc(doc(c.firestore(), "admins/admin"), { email: "admin123@edu.vn" }),
@@ -369,20 +369,19 @@ test("admin can remove marketplace data and permanently restrict a member", asyn
   const admin = db("admin"),
     batch = writeBatch(admin);
   batch.set(doc(admin, "moderation/seller"), {
-    status: "deleted",
-    reason: "Tài khoản đã bị xóa khỏi UniLoop",
+    status: "active",
+    reason: "Hồ sơ đã được đặt lại",
     updatedAt: now(),
   });
   batch.delete(doc(admin, "members/seller"));
   batch.delete(doc(admin, "members/seller/slots/0"));
-  batch.update(doc(admin, "listings/l1"), {
-    status: "blocked",
-    updatedAt: now(),
-  });
+  batch.delete(doc(admin, "listings/l1"));
+  batch.delete(doc(admin, "offers/o1"));
   await assertSucceeds(batch.commit());
-  await assertFails(
+  await assertSucceeds(
     setDoc(doc(db("seller"), "members/seller"), {
       ...member,
+      name: "Thành viên mới",
       updatedAt: now(),
     }),
   );

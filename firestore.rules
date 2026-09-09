@@ -37,7 +37,7 @@ service cloud.firestore {
     && text(request.resource.data.facebookURL,2000) && text(request.resource.data.instagramURL,2000)
     && text(request.resource.data.xURL,2000) && text(request.resource.data.phone,30);
    allow delete:if admin();
-   match /favorites/{id}{allow read,delete:if own(uid);allow create,update:if own(uid) && request.resource.data.keys().hasOnly(['createdAt']);}
+   match /favorites/{id}{allow read,delete:if admin() || own(uid);allow create,update:if own(uid) && request.resource.data.keys().hasOnly(['createdAt']);}
    match /slots/{slot}{
     allow read:if own(uid) || admin();
     allow create:if own(uid) && slot in ['0','1','2','3','4'] && request.resource.data.keys().hasOnly(['listingId'])
@@ -122,7 +122,7 @@ service cloud.firestore {
      && request.resource.data.status==(request.resource.data.buyerConfirmed && request.resource.data.sellerConfirmed?'completed':'accepted')
      && (request.resource.data.status!='completed' || pair(resource.data,'sold',id)))
    );
-   allow delete:if party(resource.data) && resource.data.status in ['cancelled','rejected'];
+   allow delete:if admin() || (party(resource.data) && resource.data.status in ['cancelled','rejected']);
    match /messages/{messageId}{
     allow read:if party(get(op(id)).data);
     allow create:if party(get(op(id)).data)
@@ -158,6 +158,7 @@ service cloud.firestore {
     && request.resource.data.targetType in ['listing','member','review','transaction'] && text(request.resource.data.targetId,200)
     && text(request.resource.data.reason,200) && text(request.resource.data.description,3000) && request.resource.data.status=='new' && request.resource.data.response=='' && recent(request.resource.data.createdAt);
    allow update:if admin() && changed(['status','response','updatedAt']) && request.resource.data.status in ['under_review','resolved','rejected'] && text(request.resource.data.response,2000);
+   allow delete:if admin();
   }
   match /verifications/{uid}{
    allow read:if admin() || (signed() && request.auth.uid==uid);
@@ -165,6 +166,7 @@ service cloud.firestore {
     && text(request.resource.data.schoolEmail,200) && text(request.resource.data.university,100) && text(request.resource.data.note,1000)
     && request.resource.data.status=='pending' && request.resource.data.response=='';
    allow update:if admin() && changed(['status','response','updatedAt']) && request.resource.data.status in ['verified','rejected'] && text(request.resource.data.response,2000);
+   allow delete:if admin();
   }
   match /studentBadges/{uid}{allow read:if true;allow write:if admin();}
   match /notifications/{id}{
@@ -189,14 +191,14 @@ service cloud.firestore {
    allow delete:if own(resource.data.ownerId)||admin();
   }
   match /wishes/{id}{
-   allow read:if own(resource.data.ownerId);
+   allow read:if admin() || own(resource.data.ownerId);
    allow create:if own(request.resource.data.ownerId)
     && request.resource.data.keys().hasOnly(['ownerId','query','school','maxPrice','createdAt','updatedAt'])
     && text(request.resource.data.query,150) && request.resource.data.query.size()>0
     && text(request.resource.data.school,100) && request.resource.data.maxPrice is number
     && request.resource.data.maxPrice>=0 && request.resource.data.maxPrice<=1000000000
     && recent(request.resource.data.createdAt);
-   allow delete:if own(resource.data.ownerId);
+   allow delete:if admin() || own(resource.data.ownerId);
   }
   match /{document=**}{allow read,write:if false;}
  }
