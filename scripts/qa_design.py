@@ -21,6 +21,15 @@ with sync_playwright() as p:
             page.wait_for_timeout(700)
             page.screenshot(path=str(output / "explore-desktop.png"), full_page=True)
             print(f"explore-desktop: url={page.url}")
+        else:
+            page.locator(".mobile-bottom").get_by_role("button", name="Khám phá", exact=True).click()
+            page.wait_for_timeout(500)
+            filters = page.locator("#explore-filters")
+            collapsed = not filters.is_visible()
+            page.get_by_role("button", name="Bộ lọc", exact=True).click()
+            expanded = filters.is_visible()
+            page.screenshot(path=str(output / "explore-mobile.png"), full_page=True)
+            print(f"explore-mobile: collapsed={collapsed}, expanded={expanded}")
         page.close()
 
     auth = browser.new_page(viewport={"width": 1280, "height": 900})

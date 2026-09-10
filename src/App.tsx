@@ -11,7 +11,10 @@ import {
   Check,
   CheckCircle2,
   Clock3,
+  Compass,
+  Handshake,
   Heart,
+  Home,
   Laptop,
   LogOut,
   MapPin,
@@ -19,13 +22,13 @@ import {
   MessageCircle,
   Package,
   PenTool,
-  Phone,
   Plus,
   Recycle,
   Search,
   Send,
   Settings,
   ShieldCheck,
+  SlidersHorizontal,
   Shirt,
   Sparkles,
   Star,
@@ -34,6 +37,7 @@ import {
   UserRound,
   Users,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import {
   browserLocalPersistence,
@@ -92,10 +96,8 @@ import {
   UNIVERSITIES,
   available,
   date,
-  initials,
   matches,
   money,
-  safeURL,
   statusLabel,
   type Listing,
   type ChatMessage,
@@ -107,6 +109,7 @@ import {
 } from "./domain";
 import "./app.css";
 import "./polish.css";
+import { Avatar, Empty, Logo, SocialLinks, ToastHost, toast } from "./ui";
 
 gsap.registerPlugin(useGSAP);
 type Page =
@@ -120,6 +123,37 @@ type Page =
   | "member"
   | "offers"
   | "admin";
+type OfferView = "all" | "action" | "meeting" | "history";
+
+const MOBILE_NAV_ITEMS: Array<{ page: Page; label: string; Icon: LucideIcon }> = [
+  { page: "home", label: "Trang chủ", Icon: Home },
+  { page: "explore", label: "Khám phá", Icon: Compass },
+  { page: "offers", label: "Giao dịch", Icon: Handshake },
+  { page: "profile", label: "Cá nhân", Icon: UserRound },
+];
+
+const OFFER_VIEWS: Array<{
+  value: OfferView;
+  label: string;
+  includes: (offer: Offer) => boolean;
+}> = [
+  { value: "all", label: "Tất cả", includes: () => true },
+  {
+    value: "action",
+    label: "Cần phản hồi",
+    includes: (offer) => ["pending", "countered"].includes(offer.status),
+  },
+  {
+    value: "meeting",
+    label: "Đang hẹn gặp",
+    includes: (offer) => offer.status === "accepted",
+  },
+  {
+    value: "history",
+    label: "Đã kết thúc",
+    includes: (offer) => ["completed", "cancelled", "rejected"].includes(offer.status),
+  },
+];
 const blank: ListingInput = {
   title: "",
   price: 0,
@@ -155,97 +189,6 @@ const meetingLabel = (value: string) => {
       });
 };
 
-function Logo({ go }: { go?: () => void }) {
-  return (
-    <button className="logo" onClick={go} aria-label="UniLoop - Trang chủ">
-      <span className="brand-crop">
-        <img src="/uniloop-brand.png" alt="UniLoop" />
-      </span>
-    </button>
-  );
-}
-function Empty({
-  title,
-  text,
-  action,
-}: {
-  title: string;
-  text: string;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div className="empty-state">
-      <Package />
-      <h3>{title}</h3>
-      <p>{text}</p>
-      {action}
-    </div>
-  );
-}
-function Avatar({ member, userName }: { member?: Member; userName?: string }) {
-  return member?.photoURL ? (
-    <img className="member-avatar" src={member.photoURL} alt="" />
-  ) : (
-    <span className="member-avatar fallback">
-      {initials(member?.name || userName || "U")}
-    </span>
-  );
-}
-function SocialLinks({ member }: { member?: Member }) {
-  const phone = (member?.phone || "").replace(/[^\d+]/g, ""),
-    links = [
-      { key: "facebook", label: "Facebook", href: safeURL(member?.facebookURL || ""), icon: "f" },
-      { key: "instagram", label: "Instagram", href: safeURL(member?.instagramURL || ""), icon: "◎" },
-      { key: "x", label: "X", href: safeURL(member?.xURL || ""), icon: "𝕏" },
-    ].filter((item) => item.href);
-  if (!links.length && !phone) return null;
-  return (
-    <div className="social-platform-links" aria-label="Liên hệ mạng xã hội">
-      {links.map((item) => (
-        <a className={item.key} key={item.key} href={item.href} target="_blank" rel="noreferrer">
-          <i>{item.icon}</i><span>{item.label}</span>
-        </a>
-      ))}
-      {phone && (
-        <a className="phone" href={`tel:${phone}`}>
-          <i><Phone /></i><span>{member?.phone}</span>
-        </a>
-      )}
-    </div>
-  );
-}
-
-type ToastDetail = { message: string; tone?: "success" | "error" | "info" };
-const toast = (message: string, tone: ToastDetail["tone"] = "success") =>
-  dispatchEvent(
-    new CustomEvent<ToastDetail>("uniloop:toast", {
-      detail: { message, tone },
-    }),
-  );
-function ToastHost() {
-  const [item, setItem] = useState<(ToastDetail & { id: number }) | null>(null);
-  useEffect(() => {
-    let timer = 0;
-    const receive = (event: Event) => {
-      const detail = (event as CustomEvent<ToastDetail>).detail;
-      setItem({ ...detail, id: Date.now() });
-      clearTimeout(timer);
-      timer = window.setTimeout(() => setItem(null), 3200);
-    };
-    addEventListener("uniloop:toast", receive);
-    return () => {
-      removeEventListener("uniloop:toast", receive);
-      clearTimeout(timer);
-    };
-  }, []);
-  return item ? (
-    <div className={`app-toast ${item.tone || "success"}`} role="status">
-      {item.tone === "error" ? <X /> : <CheckCircle2 />}
-      <span>{item.message}</span>
-    </div>
-  ) : null;
-}
-
 function Header({
   page,
   go,
@@ -270,6 +213,21 @@ function Header({
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
   }, [dark]);
+  useEffect(() => {
+    setOpen(false);
+    setNoticeOpen(false);
+  }, [page]);
+  useEffect(() => {
+    if (!open && !noticeOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        setNoticeOpen(false);
+      }
+    };
+    addEventListener("keydown", closeOnEscape);
+    return () => removeEventListener("keydown", closeOnEscape);
+  }, [open, noticeOpen]);
   const toggleTheme = () => setDark((value) => {
     const next = !value;
     localStorage.setItem(themeKey, next ? "dark" : "light");
@@ -330,6 +288,7 @@ function Header({
               <button className="icon-btn" aria-label="Đã lưu" onClick={() => go("saved")}><Heart /></button>
               <button
                 className="avatar-btn"
+                aria-label={admin ? "Mở trang quản trị" : "Mở hồ sơ cá nhân"}
                 onClick={() => go(admin ? "admin" : "profile")}
               >
                 <Avatar member={me} userName={me ? user.displayName || "U" : "U"} />
@@ -413,13 +372,53 @@ function Header({
   );
 }
 
+function MobileNavigation({
+  page,
+  go,
+  create,
+}: {
+  page: Page;
+  go: (page: Page) => void;
+  create: () => void;
+}) {
+  const renderItem = ({ page: destination, label, Icon }: (typeof MOBILE_NAV_ITEMS)[number]) => (
+    <button
+      key={destination}
+      className={page === destination ? "active" : ""}
+      aria-current={page === destination ? "page" : undefined}
+      onClick={() => go(destination)}
+    >
+      <Icon aria-hidden="true" /><span>{label}</span>
+    </button>
+  );
+  return (
+    <nav className="mobile-bottom" aria-label="Điều hướng chính">
+      {MOBILE_NAV_ITEMS.slice(0, 2).map(renderItem)}
+      <button className="add-mobile" aria-label="Đăng tin mới" onClick={create}><Plus /></button>
+      {MOBILE_NAV_ITEMS.slice(2).map(renderItem)}
+    </nav>
+  );
+}
+
 function Card({ item, open }: { item: Listing; open: (x: Listing) => void }) {
   const { saved, toggleSaved, user } = useBackend(),
     isSaved = saved.includes(item.id);
   return (
-    <article className="product-card" onClick={() => open(item)}>
+    <article
+      className="product-card"
+      role="button"
+      tabIndex={0}
+      aria-label={`Xem ${item.title}, ${money(item.price)}`}
+      onClick={() => open(item)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          open(item);
+        }
+      }}
+    >
       <div className="product-image">
-        <img src={item.images[0]} alt={item.title} />
+        <img src={item.images[0]} alt={item.title} loading="lazy" decoding="async" />
         <button
           className={"heart-btn " + (isSaved ? "saved" : "")}
           onClick={(e) => {
@@ -719,7 +718,23 @@ function Explore({
     [campus, setCampus] = useState("all"),
     [seniorOnly, setSeniorOnly] = useState(false),
     [verified, setVerified] = useState(false),
-    [sort, setSort] = useState("new");
+    [sort, setSort] = useState("new"),
+    [filtersOpen, setFiltersOpen] = useState(false);
+  const resetFilters = () => {
+    setType("all");
+    setCategory("all");
+    setCampus("all");
+    setSeniorOnly(false);
+    setVerified(false);
+    setTerm("");
+  };
+  const activeFilterCount = [
+    type !== "all",
+    category !== "all",
+    campus !== "all",
+    seniorOnly,
+    verified,
+  ].filter(Boolean).length;
   const filtered = useMemo(
     () =>
       products
@@ -758,19 +773,20 @@ function Explore({
         </label>
       </div>
       <div className="explore-layout">
-        <aside className="filters">
+        <button
+          className="mobile-filter-trigger"
+          aria-expanded={filtersOpen}
+          aria-controls="explore-filters"
+          onClick={() => setFiltersOpen((value) => !value)}
+        >
+          <SlidersHorizontal size={18} />
+          Bộ lọc
+          {activeFilterCount > 0 && <span>{activeFilterCount}</span>}
+        </button>
+        <aside id="explore-filters" className={`filters ${filtersOpen ? "open" : ""}`}>
           <div className="filter-head">
             <h3>Bộ lọc</h3>
-            <button
-              onClick={() => {
-                setType("all");
-                setCategory("all");
-                setCampus("all");
-                setSeniorOnly(false);
-                setVerified(false);
-                setTerm("");
-              }}
-            >
+            <button onClick={resetFilters} disabled={!activeFilterCount && !term}>
               Đặt lại
             </button>
           </div>
@@ -820,13 +836,24 @@ function Explore({
         </aside>
         <section className="results">
           <div className="results-bar">
-            <b>{filtered.length} sản phẩm</b>
+            <div>
+              <b>{filtered.length} sản phẩm</b>
+              {activeFilterCount > 0 && <small> · {activeFilterCount} bộ lọc đang dùng</small>}
+            </div>
             <select value={sort} onChange={(e) => setSort(e.target.value)}>
               <option value="new">Mới nhất</option>
               <option value="low">Giá thấp trước</option>
             </select>
           </div>
-          <Grid items={filtered} open={open} />
+          {filtered.length ? (
+            <Grid items={filtered} open={open} />
+          ) : (
+            <Empty
+              title="Không tìm thấy món phù hợp"
+              text="Thử bỏ bớt bộ lọc hoặc tìm bằng từ khóa ngắn hơn."
+              action={<button className="empty-action" onClick={resetFilters}>Xóa bộ lọc</button>}
+            />
+          )}
         </section>
       </div>
     </main>
@@ -1236,11 +1263,7 @@ function ListingEditor({
   }, []);
   const set = <K extends keyof ListingInput>(key: K, value: ListingInput[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
-  async function submit(
-    e: FormEvent<HTMLFormElement>,
-    status: "active" | "draft",
-  ) {
-    e.preventDefault();
+  async function saveListingForm(status: "active" | "draft") {
     setBusy(true);
     setError("");
     try {
@@ -1264,7 +1287,14 @@ function ListingEditor({
   }
   return (
     <main className="create-page container">
-      <form className="wizard" onSubmit={(e) => submit(e, "active")}>
+      <form
+        className="wizard"
+        aria-busy={busy}
+        onSubmit={(event) => {
+          event.preventDefault();
+          void saveListingForm("active");
+        }}
+      >
         <span className="section-kicker">
           {editing ? "CHỈNH SỬA TIN" : "ĐĂNG TIN MỚI"}
         </span>
@@ -1274,13 +1304,18 @@ function ListingEditor({
           dịch.
         </p>
         <div className="form-grid">
+          <div className="form-section-title">
+            <span>01</span><div><b>Thông tin chính</b><small>Tên, hình thức và mức giá.</small></div>
+          </div>
           <label className="full field-title">
-            Tiêu đề
+            Tiêu đề *
             <input
+              autoFocus
               required
               maxLength={150}
               value={form.title}
               onChange={(e) => set("title", e.target.value)}
+              placeholder="Ví dụ: Giáo trình Cấu trúc dữ liệu còn mới"
             />
           </label>
           <label className="field-type">
@@ -1297,21 +1332,26 @@ function ListingEditor({
               <option value="sale_or_exchange">Bán hoặc đổi</option>
             </select>
           </label>
-          <label className="field-price">
-            Giá (đ)
-            <input
-              required
-              type="number"
-              min="0"
-              max="1000000000"
-              disabled={form.type === "free"}
-              value={form.type === "free" ? 0 : form.price}
-              onChange={(e) => set("price", Number(e.target.value))}
-            />
-            <small>
-              Hiển thị: {money(form.type === "free" ? 0 : form.price)}
-            </small>
-          </label>
+          {form.type !== "free" && (
+            <label className="field-price">
+              Giá (đ)
+              <input
+                required
+                type="number"
+                inputMode="numeric"
+                min="0"
+                max="1000000000"
+                value={form.price}
+                onChange={(e) => set("price", Number(e.target.value))}
+              />
+              <small>Hiển thị: {money(form.price)}</small>
+            </label>
+          )}
+          {form.type !== "free" && (
+            <div className="form-section-title">
+              <span>02</span><div><b>Điều kiện giao dịch</b><small>Chỉ hiện tùy chọn phù hợp hình thức đã chọn.</small></div>
+            </div>
+          )}
           {form.type.includes("sale") && (
             <label className="full payment-qr-editor field-qr">
               QR thanh toán của người bán (không hiển thị công khai)
@@ -1362,6 +1402,9 @@ function ListingEditor({
               <small>Giúp người xem biết bạn đang ưu tiên đổi lấy món gì.</small>
             </label>
           )}
+          <div className="form-section-title">
+            <span>{form.type === "free" ? "02" : "03"}</span><div><b>Phân loại & khu vực</b><small>Giúp người phù hợp tìm thấy món đồ nhanh hơn.</small></div>
+          </div>
           <label className="field-category">
             Danh mục
             <select
@@ -1417,13 +1460,17 @@ function ListingEditor({
               <input required maxLength={100} value={form.targetCohorts} onChange={(e) => set("targetCohorts", e.target.value)} placeholder="Ví dụ: K69–K70" />
             </label>
           )}
+          <div className="form-section-title">
+            <span>{form.type === "free" ? "03" : "04"}</span><div><b>Mô tả trung thực</b><small>Nói rõ tình trạng để giảm thời gian hỏi lại.</small></div>
+          </div>
           <label className="field-description">
-            Mô tả
+            Mô tả *
             <textarea
               required
               maxLength={5000}
               value={form.description}
               onChange={(e) => set("description", e.target.value)}
+              placeholder="Tình trạng sử dụng, phụ kiện đi kèm và lý do pass..."
             />
           </label>
           <label className="field-defects">
@@ -1435,6 +1482,9 @@ function ListingEditor({
               onChange={(e) => set("defects", e.target.value)}
             />
           </label>
+          <div className="form-section-title">
+            <span>{form.type === "free" ? "04" : "05"}</span><div><b>Hình ảnh</b><small>Ảnh thật, rõ và đủ góc giúp tin đáng tin hơn.</small></div>
+          </div>
           <label className="field-images">
             Ảnh sản phẩm (1–5 ảnh, mỗi ảnh dưới 5MB)
             <input
@@ -1442,10 +1492,14 @@ function ListingEditor({
               accept="image/jpeg,image/png,image/webp"
               multiple
               onChange={(e) => {
-                const selectedFiles = Array.from(e.target.files || []);
+                const pickedFiles = Array.from(e.target.files || []);
+                const selectedFiles = pickedFiles.slice(0, 5);
                 setFiles(selectedFiles);
-                if (selectedFiles.length)
+                if (pickedFiles.length > 5) {
+                  toast("Chỉ nhận tối đa 5 ảnh. Mình đã giữ 5 ảnh đầu tiên.", "info");
+                } else if (selectedFiles.length) {
                   toast(`Đã nhận ${selectedFiles.length} ảnh sản phẩm.`, "info");
+                }
               }}
             />
             <small>
@@ -1459,23 +1513,28 @@ function ListingEditor({
               </span>
             )}
           </label>
-          <label className="field-links">
-            Hoặc URL ảnh HTTPS, mỗi dòng một ảnh
-            <textarea
-              value={imageLinks}
-              onChange={(e) => setImageLinks(e.target.value)}
-              placeholder="https://example.com/anh-san-pham.webp"
-            />
-          </label>
-          <label className="toggle-row field-negotiable">
-            Cho phép thương lượng
-            <input
-              type="checkbox"
-              checked={form.negotiable}
-              onChange={(e) => set("negotiable", e.target.checked)}
-            />
-            <span className="toggle" />
-          </label>
+          <details className="field-links advanced-field">
+            <summary>Thêm ảnh bằng đường dẫn HTTPS <small>(nâng cao)</small></summary>
+            <label>
+              Mỗi dòng một đường dẫn ảnh
+              <textarea
+                value={imageLinks}
+                onChange={(e) => setImageLinks(e.target.value)}
+                placeholder="https://example.com/anh-san-pham.webp"
+              />
+            </label>
+          </details>
+          {form.type !== "free" && (
+            <label className="toggle-row field-negotiable">
+              Cho phép thương lượng
+              <input
+                type="checkbox"
+                checked={form.negotiable}
+                onChange={(e) => set("negotiable", e.target.checked)}
+              />
+              <span className="toggle" />
+            </label>
+          )}
         </div>
         {error && (
           <p className="auth-error" role="alert">
@@ -1487,13 +1546,14 @@ function ListingEditor({
             type="button"
             className="secondary"
             disabled={busy}
-            onClick={(e) =>
-              submit(e as unknown as FormEvent<HTMLFormElement>, "draft")
-            }
+            onClick={() => void saveListingForm("draft")}
           >
             Lưu nháp
           </button>
-          <button disabled={busy}>{busy ? "Đang lưu…" : "Xuất bản"}</button>
+          <button disabled={busy}>
+            {!busy && <CheckCircle2 size={17} />}
+            {busy ? "Đang lưu…" : "Xuất bản"}
+          </button>
         </div>
       </form>
     </main>
@@ -1744,9 +1804,24 @@ function OffersPage({
     [notice, setNotice] = useState(""),
     [openChat, setOpenChat] = useState(""),
     [meetingOffer, setMeetingOffer] = useState<Offer | null>(null),
+    [offerView, setOfferView] = useState<OfferView>("all"),
     [review, setReview] = useState<
       Record<string, { rating: number; text: string }>
     >({});
+  const activeOfferView = OFFER_VIEWS.find((view) => view.value === offerView) ?? OFFER_VIEWS[0];
+  const visibleOffers = offers.filter(activeOfferView.includes);
+  const listingById = useMemo(
+    () => new Map([...products, ...ownListings].map((listing) => [listing.id, listing])),
+    [products, ownListings],
+  );
+  const memberById = useMemo(
+    () => new Map(members.map((member) => [member.id, member])),
+    [members],
+  );
+  const reviewByOfferId = useMemo(
+    () => new Map(reviews.filter((item) => item.reviewerId === user?.uid).map((item) => [item.offerId, item])),
+    [reviews, user?.uid],
+  );
   async function act(
     id: string,
     fn: () => Promise<unknown>,
@@ -1780,23 +1855,30 @@ function OffersPage({
         UniLoop không xử lý thanh toán. Chỉ xác nhận sau khi đã gặp và kiểm tra
         món đồ.
       </p>
+      <div className="offer-view-tabs" role="tablist" aria-label="Lọc giao dịch">
+        {OFFER_VIEWS.map((view) => (
+          <button
+            key={view.value}
+            role="tab"
+            aria-selected={offerView === view.value}
+            className={offerView === view.value ? "active" : ""}
+            onClick={() => setOfferView(view.value)}
+          >
+            {view.label}<span>{offers.filter(view.includes).length}</span>
+          </button>
+        ))}
+      </div>
       {error && <p className="auth-error">{error}</p>}
       {notice && <p role="status">{notice}</p>}
       <div className="offer-list">
-        {offers.length ? (
-          offers.map((o) => {
+        {visibleOffers.length ? (
+          visibleOffers.map((o) => {
             const incoming = o.sellerId === user.uid,
               counterpartId = incoming ? o.buyerId : o.sellerId,
-              counterpart = members.find((item) => item.id === counterpartId),
-              exchangeListing = [...products, ...ownListings].find(
-                (item) => item.id === o.exchangeListingId,
-              ),
-              originalListing = [...products, ...ownListings].find(
-                (item) => item.id === o.listingId,
-              ),
-              existingReview = reviews.find(
-                (item) => item.offerId === o.id && item.reviewerId === user.uid,
-              ),
+              counterpart = memberById.get(counterpartId),
+              exchangeListing = listingById.get(o.exchangeListingId),
+              originalListing = listingById.get(o.listingId),
+              existingReview = reviewByOfferId.get(o.id),
               reviewEditable =
                 !existingReview ||
                 Date.now() < existingReview.createdAt + 24 * 60 * 60 * 1000,
@@ -2083,8 +2165,8 @@ function OffersPage({
           })
         ) : (
           <Empty
-            title="Chưa có đề nghị"
-            text="Các offer gửi đi và nhận được sẽ xuất hiện ở đây."
+            title="Không có giao dịch ở mục này"
+            text="Đề nghị sẽ tự chuyển mục theo trạng thái xử lý."
           />
         )}
       </div>
@@ -3615,21 +3697,14 @@ export default function App() {
           }}
         />
       )}
-      <nav className="mobile-bottom">
-        <button onClick={() => go("home")}>Trang chủ</button>
-        <button onClick={() => go("explore")}>Khám phá</button>
-        <button
-          className="add-mobile"
-          onClick={() => {
+      <MobileNavigation
+        page={page}
+        go={go}
+        create={() => {
             setEditing(null);
             go("create");
-          }}
-        >
-          <Plus />
-        </button>
-        <button onClick={() => go("offers")}>Giao dịch</button>
-        <button onClick={() => go("profile")}>Cá nhân</button>
-      </nav>
+        }}
+      />
       <footer>
         <div className="container footer-inner">
           <Logo go={() => go("home")} />
